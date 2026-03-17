@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
+import ClientDashboard from './ClientDashboard'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,33 +11,6 @@ function getSupabase() {
   return createClient(url, key)
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-function scoreColor(s: number) {
-  if (s >= 80) return 'text-green-400'
-  if (s >= 60) return 'text-yellow-400'
-  if (s > 0)   return 'text-red-400'
-  return 'text-gray-500'
-}
-function scoreBg(s: number) {
-  if (s >= 80) return 'bg-green-500'
-  if (s >= 60) return 'bg-yellow-500'
-  if (s > 0)   return 'bg-red-500'
-  return 'bg-gray-700'
-}
-function Bar({ value, max = 10 }: { value: number; max?: number }) {
-  const pct = Math.min(100, (value / max) * 100)
-  return (
-    <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden">
-      <div className={`h-full rounded-full ${scoreBg(pct)}`} style={{ width: `${pct}%` }} />
-    </div>
-  )
-}
-function KpiPill({ met }: { met: boolean }) {
-  return met
-    ? <span className="text-xs px-2 py-0.5 bg-green-900 text-green-300 rounded-full font-medium">✅ Met</span>
-    : <span className="text-xs px-2 py-0.5 bg-red-900 text-red-300 rounded-full font-medium">❌ Missed</span>
-}
-
 // ── date helpers ──────────────────────────────────────────────────────────────
 function getDateRange(range: string, customFrom?: string, customTo?: string): { from: string; to: string; label: string } {
   const now = new Date()
@@ -44,7 +18,7 @@ function getDateRange(range: string, customFrom?: string, customTo?: string): { 
   const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
   const today = fmt(now)
 
-  if (range === 'today')     return { from: today,          to: today, label: 'Today' }
+  if (range === 'today')     return { from: today, to: today, label: 'Today' }
   if (range === 'yesterday') {
     const y = new Date(now); y.setDate(y.getDate() - 1)
     const yd = fmt(y)
@@ -68,15 +42,6 @@ const RANGES = [
   { key: '30',        label: '30 days' },
   { key: '90',        label: '90 days' },
   { key: 'all',       label: 'All time' },
-]
-
-const CRITERIA: { key: string; label: string; max: number }[] = [
-  { key: 'followed_qualification_script',     label: 'Followed Script',    max: 10 },
-  { key: 'asked_all_qualification_questions', label: 'Asked All Questions', max: 10 },
-  { key: 'call_flow_control',                 label: 'Call Flow Control',   max: 10 },
-  { key: 'objection_handling',                label: 'Objection Handling',  max: 10 },
-  { key: 'proper_dq_qualification_decision',  label: 'DQ Decision',         max: 10 },
-  { key: 'booking_attempt',                   label: 'Booking Attempt',     max: 10 },
 ]
 
 // ── page ──────────────────────────────────────────────────────────────────────
@@ -107,7 +72,7 @@ export default async function Dashboard({
     .gte('date', from)
     .lte('date', to)
     .order('id', { ascending: false })
-    .limit(200)
+    .limit(500)
 
   // Attempt KPI alerts in date range
   const { data: rawAlerts } = await supabase
@@ -118,9 +83,9 @@ export default async function Dashboard({
     .order('id', { ascending: false })
     .limit(500)
 
-  const scores       = rawScores ?? []
-  const alerts       = rawAlerts ?? []
-  const attemptRows  = alerts.filter(a => (a.summary ?? '').startsWith('ATTEMPTS |'))
+  const scores      = rawScores ?? []
+  const alerts      = rawAlerts ?? []
+  const attemptRows = alerts.filter(a => (a.summary ?? '').startsWith('ATTEMPTS |'))
 
   // Summary stats
   const avgScore  = scores.length
@@ -132,22 +97,25 @@ export default async function Dashboard({
 
   // Parse attempt rows
   const parsedAttempts = attemptRows.map(a => {
-    const parts      = (a.summary ?? '').split(' | ')
-    const name       = parts[1]?.trim() ?? '—'
-    const contactId  = parts[2]?.trim() ?? ''
-    const rest       = parts[3]?.trim() ?? ''
-    const status     = parts[4]?.trim() ?? ''
-    const contacted  = status === 'CONTACTED' || a.overall_score >= 100
-    const amMatch    = rest.match(/AM:(\d+)\/(\d+)/)
-    const pmMatch    = rest.match(/PM:(\d+)\/(\d+)/)
-    const amDone     = parseInt(amMatch?.[1] ?? '0')
-    const amReq      = parseInt(amMatch?.[2] ?? '3')
-    const pmDone     = parseInt(pmMatch?.[1] ?? '0')
-    const pmReq      = parseInt(pmMatch?.[2] ?? '3')
-    return { id: a.id, date: a.date, name, contactId, amDone, amReq, pmDone, pmReq,
-             amMet: contacted || amDone >= amReq,
-             pmMet: contacted || pmDone >= pmReq,
-             contacted }
+    const parts     = (a.summary ?? '').split(' | ')
+    const name      = parts[1]?.trim() ?? '—'
+    const contactId = parts[2]?.trim() ?? ''
+    const rest      = parts[3]?.trim() ?? ''
+    const status    = parts[4]?.trim() ?? ''
+    const contacted = status === 'CONTACTED' || a.overall_score >= 100
+    const amMatch   = rest.match(/AM:(\d+)\/(\d+)/)
+    const pmMatch   = rest.match(/PM:(\d+)\/(\d+)/)
+    const amDone    = parseInt(amMatch?.[1] ?? '0')
+    const amReq     = parseInt(amMatch?.[2] ?? '3')
+    const pmDone    = parseInt(pmMatch?.[1] ?? '0')
+    const pmReq     = parseInt(pmMatch?.[2] ?? '3')
+    return {
+      id: a.id, date: a.date, name, contactId,
+      amDone, amReq, pmDone, pmReq,
+      amMet: contacted || amDone >= amReq,
+      pmMet: contacted || pmDone >= pmReq,
+      contacted,
+    }
   })
 
   const attemptsMet    = parsedAttempts.filter(r => r.amMet && r.pmMet).length
@@ -162,6 +130,7 @@ export default async function Dashboard({
           <h1 className="text-2xl font-bold text-white">📋 QA Scorecard</h1>
           <p className="text-gray-400 text-sm mt-1">Case Settlement Now · {rangeLabel}</p>
         </div>
+
         {/* Date filter pills + custom range */}
         <div className="flex flex-wrap items-center gap-2">
           {RANGES.map(r => (
@@ -174,7 +143,6 @@ export default async function Dashboard({
               {r.label}
             </Link>
           ))}
-          {/* Custom range form */}
           <form method="GET" className="flex items-center gap-1">
             <input type="hidden" name="range" value="custom" />
             <input type="date" name="from" defaultValue={range === 'custom' ? from : ''}
@@ -194,222 +162,33 @@ export default async function Dashboard({
         </div>
       </div>
 
-      {/* ── Agent Performance Cards ── */}
-      {(() => {
-        type AgentStat = { name: string; calls: number; totalScore: number; qualified: number; booked: number; badFlag: number; kpiMet: number; kpiTotal: number }
-        const agentMap: Record<string, AgentStat> = {}
-
-        // Build from QA scores
-        for (const r of scores) {
-          const agent = (r.agent_name && r.agent_name !== 'Unassigned') ? r.agent_name : null
-          if (!agent) continue
-          if (!agentMap[agent]) agentMap[agent] = { name: agent, calls: 0, totalScore: 0, qualified: 0, booked: 0, badFlag: 0, kpiMet: 0, kpiTotal: 0 }
-          agentMap[agent].calls++
-          agentMap[agent].totalScore += r.overall_score ?? 0
-          if (r.lead_qualified)     agentMap[agent].qualified++
-          if (r.appointment_booked) agentMap[agent].booked++
-          if (r.bad_attitude_flag)  agentMap[agent].badFlag++
-        }
-
-        const agents = Object.values(agentMap).sort((a, b) => b.calls - a.calls)
-
-        return (
-          <div>
-            <h2 className="text-lg font-semibold text-white mb-3">👤 Agent QA Performance</h2>
-            {agents.length === 0 ? (
-              <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 text-center text-gray-500">
-                No QA scores with agent data yet in this period.
-                <p className="text-xs mt-1 text-gray-600">The QA Agent needs to process real calls (non-voicemail) with agent_name assigned.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {agents.map(a => {
-                  const avg = a.calls ? Math.round(a.totalScore / a.calls) : 0
-                  return (
-                    <div key={a.name} className={`bg-gray-900 rounded-xl p-4 border ${a.badFlag > 0 ? 'border-red-800' : 'border-gray-800'}`}>
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <p className="font-semibold text-white">{a.name}</p>
-                          <p className="text-xs text-gray-500">{a.calls} call{a.calls !== 1 ? 's' : ''} scored</p>
-                        </div>
-                        <div className="text-right">
-                          <span className={`text-2xl font-black ${scoreColor(avg)}`}>{avg}</span>
-                          <span className="text-sm text-gray-500">/100</span>
-                        </div>
-                      </div>
-                      <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden mb-3">
-                        <div className={`h-full rounded-full ${scoreBg(avg)}`} style={{ width: `${avg}%` }} />
-                      </div>
-                      <div className="flex flex-wrap gap-2 text-xs">
-                        <span className="text-green-400">✅ {a.qualified} qualified</span>
-                        <span className="text-blue-400">📅 {a.booked} booked</span>
-                        {a.badFlag > 0 && <span className="text-red-400">🚨 {a.badFlag} flag{a.badFlag !== 1 ? 's' : ''}</span>}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+      {/* ── Summary stat pills ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Avg QA Score',       value: `${avgScore}/100`, color: avgScore >= 80 ? 'text-green-400' : avgScore >= 60 ? 'text-yellow-400' : 'text-red-400', sub: `${scores.length} scored calls` },
+          { label: 'Qualified Leads',     value: qualified,          color: 'text-blue-400',   sub: `of ${scores.length} real calls` },
+          { label: 'Appointments Booked', value: booked,             color: 'text-green-400',  sub: 'from scored calls' },
+          { label: '⚠️ Bad Attitude',     value: badFlag,            color: badFlag ? 'text-red-400' : 'text-gray-400', sub: 'flags raised' },
+        ].map(c => (
+          <div key={c.label} className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{c.label}</p>
+            <p className={`text-3xl font-bold ${c.color}`}>{c.value}</p>
+            <p className="text-xs text-gray-600 mt-1">{c.sub}</p>
           </div>
-        )
-      })()}
+        ))}
+      </div>
 
-      {/* ── QA Scorecards ── */}
-      <section>
-        <h2 className="text-lg font-semibold text-white mb-4">🎯 QA Scorecards — Real Interactions</h2>
-        {scores.length === 0 ? (
-          <div className="bg-gray-900 rounded-xl border border-gray-800 p-8 text-center text-gray-500">
-            No scored calls in this period. Try a wider date range.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {scores.map(r => (
-              <div key={r.id} className={`bg-gray-900 rounded-xl border p-5 ${r.management_alert ? 'border-red-700' : 'border-gray-800'}`}>
-                <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {r.contact_id ? (
-                        <a href={`https://app.gohighlevel.com/v2/location/OEvyZgDZMvPWYEYrBTxR/contacts/detail/${r.contact_id}`}
-                           target="_blank" rel="noopener noreferrer"
-                           className="font-semibold text-blue-400 hover:text-blue-300 hover:underline text-base">
-                          {r.contact_name || 'Unknown'} ↗
-                        </a>
-                      ) : (
-                        <span className="font-semibold text-white text-base">{r.contact_name || 'Unknown'}</span>
-                      )}
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${r.call_direction === 'inbound' ? 'bg-blue-900 text-blue-300' : 'bg-purple-900 text-purple-300'}`}>
-                        {r.call_direction || '—'}
-                      </span>
-                      {r.bad_attitude_flag && <span className="text-xs px-2 py-0.5 bg-red-900 text-red-300 rounded-full">🚨 Bad Attitude</span>}
-                      {r.management_alert  && <span className="text-xs px-2 py-0.5 bg-orange-900 text-orange-300 rounded-full">⚠️ Mgmt Alert</span>}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">{r.date} · {r.duration_min ? `${r.duration_min} min` : '—'} · {r.phone || '—'}{r.agent_name ? ` · 👤 ${r.agent_name}` : ''}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className={`text-4xl font-black ${scoreColor(r.overall_score ?? 0)}`}>{r.overall_score ?? 0}</span>
-                    <span className="text-gray-500 text-sm">/100</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                  {CRITERIA.map(c => {
-                    const val = r[c.key] ?? 0
-                    return (
-                      <div key={c.key}>
-                        <div className="flex justify-between text-xs text-gray-400 mb-1">
-                          <span>{c.label}</span>
-                          <span className={scoreColor(val * 10)}>{val}/{c.max}</span>
-                        </div>
-                        <Bar value={val} max={c.max} />
-                      </div>
-                    )
-                  })}
-                </div>
-
-                <div className="flex flex-wrap gap-2 mb-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${r.lead_qualified ? 'bg-green-900 text-green-300' : 'bg-gray-800 text-gray-400'}`}>
-                    {r.lead_qualified ? '✅ Qualified' : '❌ Not Qualified'}
-                  </span>
-                  {r.dq_reason && <span className="text-xs px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">DQ: {r.dq_reason}</span>}
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${r.appointment_booked ? 'bg-blue-900 text-blue-300' : 'bg-gray-800 text-gray-400'}`}>
-                    {r.appointment_booked ? '📅 Booked' : 'No Booking'}
-                  </span>
-                </div>
-
-                {r.summary && (
-                  <p className="text-xs text-gray-400 border-t border-gray-800 pt-3 leading-relaxed">{r.summary}</p>
-                )}
-                {r.top_3_priorities && (
-                  <p className="text-xs text-yellow-500 mt-1">🎯 {r.top_3_priorities}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* ── Call Attempt KPI ── */}
-      <section>
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h2 className="text-lg font-semibold text-white">
-            📞 Call Attempt KPI
-            <span className="text-sm text-gray-500 font-normal ml-2">(3 AM + 3 PM per lead)</span>
-          </h2>
-          <div className="flex gap-3 text-sm">
-            <span className="text-green-400 font-medium">✅ Met: {attemptsMet}</span>
-            <span className="text-red-400 font-medium">❌ Missed: {attemptsMissed}</span>
-          </div>
-        </div>
-
-        {parsedAttempts.length === 0 ? (
-          <div className="bg-gray-900 rounded-xl border border-gray-800 p-8 text-center text-gray-500">
-            No attempt data in this period.
-          </div>
-        ) : (
-          <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-800 text-gray-400 text-left">
-                  <th className="px-4 py-3">Lead</th>
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">AM Calls</th>
-                  <th className="px-4 py-3">PM Calls</th>
-                  <th className="px-4 py-3">KPI</th>
-                </tr>
-              </thead>
-              <tbody>
-                {parsedAttempts.map(r => (
-                  <tr key={r.id} className="border-b border-gray-800/50 hover:bg-gray-800/40">
-                    <td className="px-4 py-3">
-                      {r.contactId ? (
-                        <a href={`https://app.gohighlevel.com/v2/location/OEvyZgDZMvPWYEYrBTxR/contacts/detail/${r.contactId}`}
-                           target="_blank" rel="noopener noreferrer"
-                           className="text-blue-400 hover:text-blue-300 hover:underline capitalize">
-                          {r.name} ↗
-                        </a>
-                      ) : (
-                        <span className="text-white capitalize">{r.name}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-400">{r.date}</td>
-                    <td className="px-4 py-3">
-                      {r.contacted ? (
-                        <span className="text-green-400 text-xs">✅ Contacted</span>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className={r.amMet ? 'text-green-400' : 'text-red-400'}>{r.amDone}/{r.amReq}</span>
-                          <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${r.amMet ? 'bg-green-500' : 'bg-red-500'}`}
-                                 style={{ width: `${Math.min(100,(r.amDone/r.amReq)*100)}%` }} />
-                          </div>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {r.contacted ? (
-                        <span className="text-green-400 text-xs">✅ Contacted</span>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className={r.pmMet ? 'text-green-400' : 'text-red-400'}>{r.pmDone}/{r.pmReq}</span>
-                          <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${r.pmMet ? 'bg-green-500' : 'bg-red-500'}`}
-                                 style={{ width: `${Math.min(100,(r.pmDone/r.pmReq)*100)}%` }} />
-                          </div>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {r.contacted
-                        ? <span className="text-xs px-2 py-0.5 bg-green-900 text-green-300 rounded-full font-medium">✅ KPI Met</span>
-                        : <KpiPill met={r.amMet && r.pmMet} />}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      {/* ── Interactive dashboard (client component) ── */}
+      <ClientDashboard
+        scores={scores}
+        parsedAttempts={parsedAttempts}
+        avgScore={avgScore}
+        qualified={qualified}
+        booked={booked}
+        badFlag={badFlag}
+        attemptsMet={attemptsMet}
+        attemptsMissed={attemptsMissed}
+      />
 
     </div>
   )

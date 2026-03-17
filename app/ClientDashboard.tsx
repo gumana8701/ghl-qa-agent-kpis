@@ -1,0 +1,346 @@
+'use client'
+
+import { useState } from 'react'
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+function scoreColor(s: number) {
+  if (s >= 80) return 'text-green-400'
+  if (s >= 60) return 'text-yellow-400'
+  if (s > 0)   return 'text-red-400'
+  return 'text-gray-500'
+}
+function scoreBg(s: number) {
+  if (s >= 80) return 'bg-green-500'
+  if (s >= 60) return 'bg-yellow-500'
+  if (s > 0)   return 'bg-red-500'
+  return 'bg-gray-700'
+}
+function Bar({ value, max = 10 }: { value: number; max?: number }) {
+  const pct = Math.min(100, (value / max) * 100)
+  return (
+    <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden">
+      <div className={`h-full rounded-full ${scoreBg(pct)}`} style={{ width: `${pct}%` }} />
+    </div>
+  )
+}
+function KpiPill({ met }: { met: boolean }) {
+  return met
+    ? <span className="text-xs px-2 py-0.5 bg-green-900 text-green-300 rounded-full font-medium">✅ Met</span>
+    : <span className="text-xs px-2 py-0.5 bg-red-900 text-red-300 rounded-full font-medium">❌ Missed</span>
+}
+
+const CRITERIA: { key: string; label: string; max: number }[] = [
+  { key: 'followed_qualification_script',     label: 'Followed Script',    max: 10 },
+  { key: 'asked_all_qualification_questions', label: 'Asked All Questions', max: 10 },
+  { key: 'call_flow_control',                 label: 'Call Flow Control',   max: 10 },
+  { key: 'objection_handling',                label: 'Objection Handling',  max: 10 },
+  { key: 'proper_dq_qualification_decision',  label: 'DQ Decision',         max: 10 },
+  { key: 'booking_attempt',                   label: 'Booking Attempt',     max: 10 },
+]
+
+const GHL_LOC = 'OEvyZgDZMvPWYEYrBTxR'
+
+// ── types ─────────────────────────────────────────────────────────────────────
+type Score = Record<string, any>
+type AttemptRow = {
+  id: number; date: string; name: string; contactId: string;
+  amDone: number; amReq: number; pmDone: number; pmReq: number;
+  amMet: boolean; pmMet: boolean; contacted: boolean
+}
+
+type Props = {
+  scores: Score[]
+  parsedAttempts: AttemptRow[]
+  avgScore: number
+  qualified: number
+  booked: number
+  badFlag: number
+  attemptsMet: number
+  attemptsMissed: number
+}
+
+// ── QA Scorecard (single call) ────────────────────────────────────────────────
+function ScorecardCard({ r }: { r: Score }) {
+  return (
+    <div className={`bg-gray-800 rounded-xl border p-4 ${r.management_alert ? 'border-red-700' : 'border-gray-700'}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`text-xs px-2 py-0.5 rounded-full ${r.call_direction === 'inbound' ? 'bg-blue-900 text-blue-300' : 'bg-purple-900 text-purple-300'}`}>
+              {r.call_direction || '—'}
+            </span>
+            {r.bad_attitude_flag && <span className="text-xs px-2 py-0.5 bg-red-900 text-red-300 rounded-full">🚨 Bad Attitude</span>}
+            {r.management_alert  && <span className="text-xs px-2 py-0.5 bg-orange-900 text-orange-300 rounded-full">⚠️ Mgmt Alert</span>}
+          </div>
+          <p className="text-xs text-gray-500 mt-1">{r.date} · {r.duration_min ? `${r.duration_min} min` : '—'}{r.agent_name ? ` · 👤 ${r.agent_name}` : ''}</p>
+        </div>
+        <div className="text-right">
+          <span className={`text-3xl font-black ${scoreColor(r.overall_score ?? 0)}`}>{r.overall_score ?? 0}</span>
+          <span className="text-gray-500 text-xs">/100</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        {CRITERIA.map(c => {
+          const val = r[c.key] ?? 0
+          return (
+            <div key={c.key}>
+              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                <span>{c.label}</span>
+                <span className={scoreColor(val * 10)}>{val}/{c.max}</span>
+              </div>
+              <Bar value={val} max={c.max} />
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-2">
+        <span className={`text-xs px-2 py-0.5 rounded-full ${r.lead_qualified ? 'bg-green-900 text-green-300' : 'bg-gray-700 text-gray-400'}`}>
+          {r.lead_qualified ? '✅ Qualified' : '❌ Not Qualified'}
+        </span>
+        {r.dq_reason && <span className="text-xs px-2 py-0.5 bg-gray-700 text-gray-400 rounded-full">DQ: {r.dq_reason}</span>}
+        <span className={`text-xs px-2 py-0.5 rounded-full ${r.appointment_booked ? 'bg-blue-900 text-blue-300' : 'bg-gray-700 text-gray-400'}`}>
+          {r.appointment_booked ? '📅 Booked' : 'No Booking'}
+        </span>
+      </div>
+
+      {r.summary && (
+        <p className="text-xs text-gray-400 border-t border-gray-700 pt-2 leading-relaxed">{r.summary}</p>
+      )}
+      {r.top_3_priorities && (
+        <p className="text-xs text-yellow-500 mt-1">🎯 {r.top_3_priorities}</p>
+      )}
+    </div>
+  )
+}
+
+// ── Side Drawer ───────────────────────────────────────────────────────────────
+function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Score[]; onClose: () => void }) {
+  const contactScores = scores.filter(s => s.contact_id === attempt.contactId)
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 bg-black/60 z-40" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="fixed top-0 right-0 h-full w-full max-w-xl bg-gray-900 border-l border-gray-700 z-50 flex flex-col shadow-2xl">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+          <div>
+            <h2 className="font-semibold text-white text-lg capitalize">{attempt.name}</h2>
+            <p className="text-xs text-gray-500">{attempt.date} · KPI {attempt.amMet && attempt.pmMet ? '✅ Met' : '❌ Missed'}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {attempt.contactId ? (
+              <a
+                href={`https://app.gohighlevel.com/v2/location/${GHL_LOC}/contacts/detail/${attempt.contactId}`}
+                target="_blank" rel="noopener noreferrer"
+                className="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors"
+              >
+                Go to Contact ↗
+              </a>
+            ) : null}
+            <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+          </div>
+        </div>
+
+        {/* KPI summary */}
+        <div className="px-5 py-3 border-b border-gray-800 flex gap-6 text-sm">
+          <div>
+            <p className="text-gray-500 text-xs">AM Calls</p>
+            {attempt.contacted
+              ? <p className="text-green-400 font-medium">✅ Contacted</p>
+              : <p className={attempt.amMet ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.amDone}/{attempt.amReq}</p>
+            }
+          </div>
+          <div>
+            <p className="text-gray-500 text-xs">PM Calls</p>
+            {attempt.contacted
+              ? <p className="text-green-400 font-medium">✅ Contacted</p>
+              : <p className={attempt.pmMet ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.pmDone}/{attempt.pmReq}</p>
+            }
+          </div>
+          <div>
+            <p className="text-gray-500 text-xs">QA Calls scored</p>
+            <p className="text-white font-medium">{contactScores.length}</p>
+          </div>
+        </div>
+
+        {/* Scrollable scorecards */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {contactScores.length === 0 ? (
+            <div className="text-center text-gray-500 py-10">
+              <p>No QA scores for this contact</p>
+              <p className="text-xs mt-1 text-gray-600">Calls are scored overnight by the QA Agent</p>
+            </div>
+          ) : (
+            contactScores.map(s => <ScorecardCard key={s.id} r={s} />)
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── Main Client Dashboard ─────────────────────────────────────────────────────
+export default function ClientDashboard({
+  scores, parsedAttempts, avgScore, qualified, booked, badFlag, attemptsMet, attemptsMissed
+}: Props) {
+  const [selectedAttempt, setSelectedAttempt] = useState<AttemptRow | null>(null)
+
+  // Build agent stats
+  type AgentStat = { name: string; calls: number; totalScore: number; qualified: number; booked: number; badFlag: number }
+  const agentMap: Record<string, AgentStat> = {}
+  for (const r of scores) {
+    const agent = (r.agent_name && r.agent_name !== 'Unassigned' && r.agent_name !== 'Pending') ? r.agent_name : null
+    if (!agent) continue
+    if (!agentMap[agent]) agentMap[agent] = { name: agent, calls: 0, totalScore: 0, qualified: 0, booked: 0, badFlag: 0 }
+    agentMap[agent].calls++
+    agentMap[agent].totalScore += r.overall_score ?? 0
+    if (r.lead_qualified)     agentMap[agent].qualified++
+    if (r.appointment_booked) agentMap[agent].booked++
+    if (r.bad_attitude_flag)  agentMap[agent].badFlag++
+  }
+  const agents = Object.values(agentMap).sort((a, b) => b.calls - a.calls)
+
+  return (
+    <div className="space-y-8">
+
+      {/* ── Agent QA Performance ── */}
+      <div>
+        <h2 className="text-lg font-semibold text-white mb-3">👤 Agent QA Performance</h2>
+        {agents.length === 0 ? (
+          <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 text-center text-gray-500">
+            No QA scores with agent data yet in this period.
+            <p className="text-xs mt-1 text-gray-600">The QA Agent needs to process real calls (non-voicemail) with agent_name assigned.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {agents.map(a => {
+              const avg = a.calls ? Math.round(a.totalScore / a.calls) : 0
+              return (
+                <div key={a.name} className={`bg-gray-900 rounded-xl p-4 border ${a.badFlag > 0 ? 'border-red-800' : 'border-gray-800'}`}>
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <p className="font-semibold text-white">{a.name}</p>
+                      <p className="text-xs text-gray-500">{a.calls} call{a.calls !== 1 ? 's' : ''} scored</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-2xl font-black ${scoreColor(avg)}`}>{avg}</span>
+                      <span className="text-sm text-gray-500">/100</span>
+                    </div>
+                  </div>
+                  <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden mb-3">
+                    <div className={`h-full rounded-full ${scoreBg(avg)}`} style={{ width: `${avg}%` }} />
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="text-green-400">✅ {a.qualified} qualified</span>
+                    <span className="text-blue-400">📅 {a.booked} booked</span>
+                    {a.badFlag > 0 && <span className="text-red-400">🚨 {a.badFlag} flag{a.badFlag !== 1 ? 's' : ''}</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Call Attempt KPI ── */}
+      <section>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div>
+            <h2 className="text-lg font-semibold text-white">
+              📞 Call Attempt KPI
+              <span className="text-sm text-gray-500 font-normal ml-2">(3 AM + 3 PM per lead)</span>
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">Click a row to see QA scorecards for that contact</p>
+          </div>
+          <div className="flex gap-3 text-sm">
+            <span className="text-green-400 font-medium">✅ Met: {attemptsMet}</span>
+            <span className="text-red-400 font-medium">❌ Missed: {attemptsMissed}</span>
+          </div>
+        </div>
+
+        {parsedAttempts.length === 0 ? (
+          <div className="bg-gray-900 rounded-xl border border-gray-800 p-8 text-center text-gray-500">
+            No attempt data in this period.
+          </div>
+        ) : (
+          <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800 text-gray-400 text-left">
+                  <th className="px-4 py-3">Lead</th>
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">AM Calls</th>
+                  <th className="px-4 py-3">PM Calls</th>
+                  <th className="px-4 py-3">KPI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parsedAttempts.map(r => (
+                  <tr
+                    key={r.id}
+                    onClick={() => setSelectedAttempt(r)}
+                    className="border-b border-gray-800/50 hover:bg-gray-800/60 cursor-pointer transition-colors"
+                  >
+                    <td className="px-4 py-3">
+                      <span className="text-white capitalize">{r.name}</span>
+                      {r.contactId && (
+                        <span className="ml-1 text-xs text-gray-600">↗</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-400">{r.date}</td>
+                    <td className="px-4 py-3">
+                      {r.contacted ? (
+                        <span className="text-green-400 text-xs">✅ Contacted</span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className={r.amMet ? 'text-green-400' : 'text-red-400'}>{r.amDone}/{r.amReq}</span>
+                          <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${r.amMet ? 'bg-green-500' : 'bg-red-500'}`}
+                                 style={{ width: `${Math.min(100,(r.amDone/r.amReq)*100)}%` }} />
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {r.contacted ? (
+                        <span className="text-green-400 text-xs">✅ Contacted</span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className={r.pmMet ? 'text-green-400' : 'text-red-400'}>{r.pmDone}/{r.pmReq}</span>
+                          <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${r.pmMet ? 'bg-green-500' : 'bg-red-500'}`}
+                                 style={{ width: `${Math.min(100,(r.pmDone/r.pmReq)*100)}%` }} />
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {r.contacted
+                        ? <span className="text-xs px-2 py-0.5 bg-green-900 text-green-300 rounded-full font-medium">✅ KPI Met</span>
+                        : <KpiPill met={r.amMet && r.pmMet} />}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ── Side Drawer ── */}
+      {selectedAttempt && (
+        <Drawer
+          attempt={selectedAttempt}
+          scores={scores}
+          onClose={() => setSelectedAttempt(null)}
+        />
+      )}
+    </div>
+  )
+}
