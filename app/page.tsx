@@ -1,9 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 
+// Force dynamic rendering — skip static generation at build time
+export const dynamic = 'force-dynamic'
+
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !key) throw new Error('Missing Supabase env vars')
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+  if (!url || !key) return null
   return createClient(url, key)
 }
 
@@ -29,12 +32,18 @@ function StatCard({ label, value, sub, color }: { label: string; value: string |
   )
 }
 
-export const revalidate = 60
-
 export default async function Dashboard() {
   const supabase = getSupabase()
 
-  // QA Scores — last 7 days
+  if (!supabase) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-red-400 text-lg">⚠️ Missing Supabase environment variables. Add them in Vercel settings.</p>
+      </div>
+    )
+  }
+
+  // QA Scores — last 100
   const { data: scores } = await supabase
     .from('qa_scores')
     .select('*')
