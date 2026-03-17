@@ -38,25 +38,36 @@ function KpiPill({ met }: { met: boolean }) {
 }
 
 // ── date helpers ──────────────────────────────────────────────────────────────
-function getDateRange(range: string): { from: string; label: string } {
+function getDateRange(range: string, customFrom?: string, customTo?: string): { from: string; to: string; label: string } {
   const now = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
   const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
-  if (range === 'today') return { from: fmt(now), label: 'Today' }
+  const today = fmt(now)
+
+  if (range === 'today')     return { from: today,          to: today, label: 'Today' }
+  if (range === 'yesterday') {
+    const y = new Date(now); y.setDate(y.getDate() - 1)
+    const yd = fmt(y)
+    return { from: yd, to: yd, label: 'Yesterday' }
+  }
+  if (range === 'custom' && customFrom && customTo)
+    return { from: customFrom, to: customTo, label: `${customFrom} → ${customTo}` }
+
   const days = range === '7' ? 7 : range === '30' ? 30 : range === '90' ? 90 : null
   if (days) {
     const d = new Date(now); d.setDate(d.getDate() - days)
-    return { from: fmt(d), label: `Last ${days} days` }
+    return { from: fmt(d), to: today, label: `Last ${days} days` }
   }
-  return { from: '2000-01-01', label: 'All time' }
+  return { from: '2000-01-01', to: today, label: 'All time' }
 }
 
 const RANGES = [
-  { key: 'today', label: 'Today' },
-  { key: '7',     label: '7 days' },
-  { key: '30',    label: '30 days' },
-  { key: '90',    label: '90 days' },
-  { key: 'all',   label: 'All time' },
+  { key: 'today',     label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
+  { key: '7',         label: '7 days' },
+  { key: '30',        label: '30 days' },
+  { key: '90',        label: '90 days' },
+  { key: 'all',       label: 'All time' },
 ]
 
 const CRITERIA: { key: string; label: string; max: number }[] = [
@@ -72,7 +83,7 @@ const CRITERIA: { key: string; label: string; max: number }[] = [
 export default async function Dashboard({
   searchParams,
 }: {
-  searchParams: { range?: string }
+  searchParams: { range?: string; from?: string; to?: string }
 }) {
   const supabase = getSupabase()
   if (!supabase) {
@@ -83,8 +94,10 @@ export default async function Dashboard({
     )
   }
 
-  const range = searchParams?.range ?? '7'
-  const { from, label: rangeLabel } = getDateRange(range)
+  const range      = searchParams?.range ?? '7'
+  const customFrom = searchParams?.from
+  const customTo   = searchParams?.to
+  const { from, to, label: rangeLabel } = getDateRange(range, customFrom, customTo)
 
   // QA scores — real calls only in date range
   const { data: rawScores } = await supabase
@@ -92,6 +105,7 @@ export default async function Dashboard({
     .select('*')
     .eq('voicemail_flag', false)
     .gte('date', from)
+    .lte('date', to)
     .order('id', { ascending: false })
     .limit(200)
 
@@ -100,6 +114,7 @@ export default async function Dashboard({
     .from('management_alerts')
     .select('*')
     .gte('date', from)
+    .lte('date', to)
     .order('id', { ascending: false })
     .limit(500)
 
@@ -143,8 +158,8 @@ export default async function Dashboard({
           <h1 className="text-2xl font-bold text-white">📋 QA Scorecard</h1>
           <p className="text-gray-400 text-sm mt-1">Case Settlement Now · {rangeLabel}</p>
         </div>
-        {/* Date filter pills */}
-        <div className="flex flex-wrap gap-2">
+        {/* Date filter pills + custom range */}
+        <div className="flex flex-wrap items-center gap-2">
           {RANGES.map(r => (
             <Link key={r.key} href={`?range=${r.key}`}
               className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${
@@ -155,6 +170,23 @@ export default async function Dashboard({
               {r.label}
             </Link>
           ))}
+          {/* Custom range form */}
+          <form method="GET" className="flex items-center gap-1">
+            <input type="hidden" name="range" value="custom" />
+            <input type="date" name="from" defaultValue={range === 'custom' ? from : ''}
+              className="text-xs bg-gray-800 text-gray-300 border border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500" />
+            <span className="text-gray-500 text-xs">→</span>
+            <input type="date" name="to" defaultValue={range === 'custom' ? to : ''}
+              className="text-xs bg-gray-800 text-gray-300 border border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500" />
+            <button type="submit"
+              className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                range === 'custom'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
+              }`}>
+              Go
+            </button>
+          </form>
         </div>
       </div>
 
