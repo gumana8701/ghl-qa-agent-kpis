@@ -196,67 +196,60 @@ export default async function Dashboard({
 
       {/* ── Agent Performance Cards ── */}
       {(() => {
-        // Group scores by agent
-        type AgentStat = { name: string; calls: number; totalScore: number; qualified: number; booked: number; badFlag: number }
+        type AgentStat = { name: string; calls: number; totalScore: number; qualified: number; booked: number; badFlag: number; kpiMet: number; kpiTotal: number }
         const agentMap: Record<string, AgentStat> = {}
+
+        // Build from QA scores
         for (const r of scores) {
-          const agent = r.agent_name || 'Unassigned'
-          if (!agentMap[agent]) agentMap[agent] = { name: agent, calls: 0, totalScore: 0, qualified: 0, booked: 0, badFlag: 0 }
+          const agent = (r.agent_name && r.agent_name !== 'Unassigned') ? r.agent_name : null
+          if (!agent) continue
+          if (!agentMap[agent]) agentMap[agent] = { name: agent, calls: 0, totalScore: 0, qualified: 0, booked: 0, badFlag: 0, kpiMet: 0, kpiTotal: 0 }
           agentMap[agent].calls++
           agentMap[agent].totalScore += r.overall_score ?? 0
           if (r.lead_qualified)     agentMap[agent].qualified++
           if (r.appointment_booked) agentMap[agent].booked++
           if (r.bad_attitude_flag)  agentMap[agent].badFlag++
         }
-        const agents = Object.values(agentMap).sort((a, b) => b.calls - a.calls)
 
-        if (agents.length === 0 || (agents.length === 1 && agents[0].name === 'Unassigned')) {
-          // Fallback summary cards when no agent data yet
-          return (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { label: 'Avg QA Score',       value: `${avgScore}/100`, color: scoreColor(avgScore),                       sub: `${scores.length} scored calls` },
-                { label: 'Qualified Leads',     value: qualified,          color: 'text-blue-400',                           sub: `of ${scores.length} real calls` },
-                { label: 'Appointments Booked', value: booked,             color: 'text-green-400',                          sub: 'from scored calls' },
-                { label: '⚠️ Bad Attitude',     value: badFlag,            color: badFlag ? 'text-red-400' : 'text-gray-400', sub: 'flags raised' },
-              ].map(c => (
-                <div key={c.label} className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{c.label}</p>
-                  <p className={`text-3xl font-bold ${c.color}`}>{c.value}</p>
-                  <p className="text-xs text-gray-600 mt-1">{c.sub}</p>
-                </div>
-              ))}
-            </div>
-          )
-        }
+        const agents = Object.values(agentMap).sort((a, b) => b.calls - a.calls)
 
         return (
           <div>
-            <h2 className="text-lg font-semibold text-white mb-3">👤 Agent Performance</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {agents.map(a => {
-                const avg = a.calls ? Math.round(a.totalScore / a.calls) : 0
-                return (
-                  <div key={a.name} className={`bg-gray-900 rounded-xl p-4 border ${a.badFlag > 0 ? 'border-red-800' : 'border-gray-800'}`}>
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <p className="font-semibold text-white">{a.name}</p>
-                        <p className="text-xs text-gray-500">{a.calls} call{a.calls !== 1 ? 's' : ''} scored</p>
+            <h2 className="text-lg font-semibold text-white mb-3">👤 Agent QA Performance</h2>
+            {agents.length === 0 ? (
+              <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 text-center text-gray-500">
+                No QA scores with agent data yet in this period.
+                <p className="text-xs mt-1 text-gray-600">The QA Agent needs to process real calls (non-voicemail) with agent_name assigned.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {agents.map(a => {
+                  const avg = a.calls ? Math.round(a.totalScore / a.calls) : 0
+                  return (
+                    <div key={a.name} className={`bg-gray-900 rounded-xl p-4 border ${a.badFlag > 0 ? 'border-red-800' : 'border-gray-800'}`}>
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <p className="font-semibold text-white">{a.name}</p>
+                          <p className="text-xs text-gray-500">{a.calls} call{a.calls !== 1 ? 's' : ''} scored</p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-2xl font-black ${scoreColor(avg)}`}>{avg}</span>
+                          <span className="text-sm text-gray-500">/100</span>
+                        </div>
                       </div>
-                      <span className={`text-2xl font-black ${scoreColor(avg)}`}>{avg}<span className="text-sm text-gray-500">/100</span></span>
+                      <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden mb-3">
+                        <div className={`h-full rounded-full ${scoreBg(avg)}`} style={{ width: `${avg}%` }} />
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="text-green-400">✅ {a.qualified} qualified</span>
+                        <span className="text-blue-400">📅 {a.booked} booked</span>
+                        {a.badFlag > 0 && <span className="text-red-400">🚨 {a.badFlag} flag{a.badFlag !== 1 ? 's' : ''}</span>}
+                      </div>
                     </div>
-                    <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden mb-3">
-                      <div className={`h-full rounded-full ${scoreBg(avg)}`} style={{ width: `${avg}%` }} />
-                    </div>
-                    <div className="flex gap-3 text-xs text-gray-400">
-                      <span className="text-green-400">✅ {a.qualified} qualified</span>
-                      <span className="text-blue-400">📅 {a.booked} booked</span>
-                      {a.badFlag > 0 && <span className="text-red-400">🚨 {a.badFlag} flag{a.badFlag !== 1 ? 's' : ''}</span>}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )
       })()}
