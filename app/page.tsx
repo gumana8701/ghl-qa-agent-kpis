@@ -189,7 +189,7 @@ export default async function Dashboard({
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       {r.contact_id ? (
-                        <a href={`https://app.leadconnectorhq.com/contacts/detail/${r.contact_id}`}
+                        <a href={`https://app.gohighlevel.com/v2/location/OEvyZgDZMvPWYEYrBTxR/contacts/detail/${r.contact_id}`}
                            target="_blank" rel="noopener noreferrer"
                            className="font-semibold text-blue-400 hover:text-blue-300 hover:underline text-base">
                           {r.contact_name || 'Unknown'} ↗
@@ -282,7 +282,7 @@ export default async function Dashboard({
                   <tr key={r.id} className="border-b border-gray-800/50 hover:bg-gray-800/40">
                     <td className="px-4 py-3">
                       {r.contactId ? (
-                        <a href={`https://app.leadconnectorhq.com/contacts/detail/${r.contactId}`}
+                        <a href={`https://app.gohighlevel.com/v2/location/OEvyZgDZMvPWYEYrBTxR/contacts/detail/${r.contactId}`}
                            target="_blank" rel="noopener noreferrer"
                            className="text-blue-400 hover:text-blue-300 hover:underline capitalize">
                           {r.name} ↗
