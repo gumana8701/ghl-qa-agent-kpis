@@ -93,16 +93,17 @@ export default async function Dashboard() {
   // Parse attempt KPI rows
   // summary format: "ATTEMPTS | name | contactId | AM:2/3 PM:1/3"
   const parsedAttempts = attemptRows.map(a => {
-    const parts = (a.summary ?? '').split(' | ')
-    const name  = parts[1]?.trim() ?? '—'
-    const rest  = parts[3]?.trim() ?? ''
+    const parts     = (a.summary ?? '').split(' | ')
+    const name      = parts[1]?.trim() ?? '—'
+    const contactId = parts[2]?.trim() ?? ''
+    const rest      = parts[3]?.trim() ?? ''
     const amMatch = rest.match(/AM:(\d+)\/(\d+)/)
     const pmMatch = rest.match(/PM:(\d+)\/(\d+)/)
     const amDone = parseInt(amMatch?.[1] ?? '0')
     const amReq  = parseInt(amMatch?.[2] ?? '3')
     const pmDone = parseInt(pmMatch?.[1] ?? '0')
     const pmReq  = parseInt(pmMatch?.[2] ?? '3')
-    return { id: a.id, date: a.date, name, amDone, amReq, pmDone, pmReq,
+    return { id: a.id, date: a.date, name, contactId, amDone, amReq, pmDone, pmReq,
              amMet: amDone >= amReq, pmMet: pmDone >= pmReq }
   })
 
@@ -150,7 +151,15 @@ export default async function Dashboard() {
                 <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-white text-base">{r.contact_name || 'Unknown'}</span>
+                      {r.contact_id ? (
+                        <a href={`https://app.leadconnectorhq.com/contacts/detail/${r.contact_id}`}
+                           target="_blank" rel="noopener noreferrer"
+                           className="font-semibold text-blue-400 hover:text-blue-300 hover:underline text-base">
+                          {r.contact_name || 'Unknown'} ↗
+                        </a>
+                      ) : (
+                        <span className="font-semibold text-white text-base">{r.contact_name || 'Unknown'}</span>
+                      )}
                       <span className={`text-xs px-2 py-0.5 rounded-full ${r.call_direction === 'inbound' ? 'bg-blue-900 text-blue-300' : 'bg-purple-900 text-purple-300'}`}>
                         {r.call_direction || '—'}
                       </span>
@@ -235,7 +244,17 @@ export default async function Dashboard() {
               <tbody>
                 {parsedAttempts.map(r => (
                   <tr key={r.id} className="border-b border-gray-800/50 hover:bg-gray-800/40">
-                    <td className="px-4 py-3 text-white capitalize">{r.name}</td>
+                    <td className="px-4 py-3">
+                      {r.contactId ? (
+                        <a href={`https://app.leadconnectorhq.com/contacts/detail/${r.contactId}`}
+                           target="_blank" rel="noopener noreferrer"
+                           className="text-blue-400 hover:text-blue-300 hover:underline capitalize">
+                          {r.name} ↗
+                        </a>
+                      ) : (
+                        <span className="text-white capitalize">{r.name}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-gray-400">{r.date}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
