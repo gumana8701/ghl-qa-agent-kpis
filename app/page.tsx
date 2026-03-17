@@ -132,18 +132,22 @@ export default async function Dashboard({
 
   // Parse attempt rows
   const parsedAttempts = attemptRows.map(a => {
-    const parts     = (a.summary ?? '').split(' | ')
-    const name      = parts[1]?.trim() ?? '—'
-    const contactId = parts[2]?.trim() ?? ''
-    const rest      = parts[3]?.trim() ?? ''
-    const amMatch   = rest.match(/AM:(\d+)\/(\d+)/)
-    const pmMatch   = rest.match(/PM:(\d+)\/(\d+)/)
-    const amDone    = parseInt(amMatch?.[1] ?? '0')
-    const amReq     = parseInt(amMatch?.[2] ?? '3')
-    const pmDone    = parseInt(pmMatch?.[1] ?? '0')
-    const pmReq     = parseInt(pmMatch?.[2] ?? '3')
+    const parts      = (a.summary ?? '').split(' | ')
+    const name       = parts[1]?.trim() ?? '—'
+    const contactId  = parts[2]?.trim() ?? ''
+    const rest       = parts[3]?.trim() ?? ''
+    const status     = parts[4]?.trim() ?? ''
+    const contacted  = status === 'CONTACTED' || a.overall_score >= 100
+    const amMatch    = rest.match(/AM:(\d+)\/(\d+)/)
+    const pmMatch    = rest.match(/PM:(\d+)\/(\d+)/)
+    const amDone     = parseInt(amMatch?.[1] ?? '0')
+    const amReq      = parseInt(amMatch?.[2] ?? '3')
+    const pmDone     = parseInt(pmMatch?.[1] ?? '0')
+    const pmReq      = parseInt(pmMatch?.[2] ?? '3')
     return { id: a.id, date: a.date, name, contactId, amDone, amReq, pmDone, pmReq,
-             amMet: amDone >= amReq, pmMet: pmDone >= pmReq }
+             amMet: contacted || amDone >= amReq,
+             pmMet: contacted || pmDone >= pmReq,
+             contacted }
   })
 
   const attemptsMet    = parsedAttempts.filter(r => r.amMet && r.pmMet).length
@@ -376,24 +380,36 @@ export default async function Dashboard({
                     </td>
                     <td className="px-4 py-3 text-gray-400">{r.date}</td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className={r.amMet ? 'text-green-400' : 'text-red-400'}>{r.amDone}/{r.amReq}</span>
-                        <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${r.amMet ? 'bg-green-500' : 'bg-red-500'}`}
-                               style={{ width: `${Math.min(100,(r.amDone/r.amReq)*100)}%` }} />
+                      {r.contacted ? (
+                        <span className="text-green-400 text-xs">✅ Contacted</span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className={r.amMet ? 'text-green-400' : 'text-red-400'}>{r.amDone}/{r.amReq}</span>
+                          <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${r.amMet ? 'bg-green-500' : 'bg-red-500'}`}
+                                 style={{ width: `${Math.min(100,(r.amDone/r.amReq)*100)}%` }} />
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className={r.pmMet ? 'text-green-400' : 'text-red-400'}>{r.pmDone}/{r.pmReq}</span>
-                        <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${r.pmMet ? 'bg-green-500' : 'bg-red-500'}`}
-                               style={{ width: `${Math.min(100,(r.pmDone/r.pmReq)*100)}%` }} />
+                      {r.contacted ? (
+                        <span className="text-green-400 text-xs">✅ Contacted</span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className={r.pmMet ? 'text-green-400' : 'text-red-400'}>{r.pmDone}/{r.pmReq}</span>
+                          <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${r.pmMet ? 'bg-green-500' : 'bg-red-500'}`}
+                                 style={{ width: `${Math.min(100,(r.pmDone/r.pmReq)*100)}%` }} />
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </td>
-                    <td className="px-4 py-3"><KpiPill met={r.amMet && r.pmMet} /></td>
+                    <td className="px-4 py-3">
+                      {r.contacted
+                        ? <span className="text-xs px-2 py-0.5 bg-green-900 text-green-300 rounded-full font-medium">✅ KPI Met</span>
+                        : <KpiPill met={r.amMet && r.pmMet} />}
+                    </td>
                   </tr>
                 ))}
               </tbody>
