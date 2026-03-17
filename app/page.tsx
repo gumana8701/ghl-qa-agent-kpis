@@ -190,21 +190,72 @@ export default async function Dashboard({
         </div>
       </div>
 
-      {/* ── Summary cards ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Avg QA Score',        value: `${avgScore}/100`,  color: scoreColor(avgScore),                sub: `${scores.length} scored calls` },
-          { label: 'Qualified Leads',      value: qualified,           color: 'text-blue-400',                   sub: `of ${scores.length} real calls` },
-          { label: 'Appointments Booked',  value: booked,              color: 'text-green-400',                  sub: 'from scored calls' },
-          { label: '⚠️ Bad Attitude',      value: badFlag,             color: badFlag ? 'text-red-400' : 'text-gray-400', sub: 'flags raised' },
-        ].map(c => (
-          <div key={c.label} className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{c.label}</p>
-            <p className={`text-3xl font-bold ${c.color}`}>{c.value}</p>
-            <p className="text-xs text-gray-600 mt-1">{c.sub}</p>
+      {/* ── Agent Performance Cards ── */}
+      {(() => {
+        // Group scores by agent
+        type AgentStat = { name: string; calls: number; totalScore: number; qualified: number; booked: number; badFlag: number }
+        const agentMap: Record<string, AgentStat> = {}
+        for (const r of scores) {
+          const agent = r.agent_name || 'Unassigned'
+          if (!agentMap[agent]) agentMap[agent] = { name: agent, calls: 0, totalScore: 0, qualified: 0, booked: 0, badFlag: 0 }
+          agentMap[agent].calls++
+          agentMap[agent].totalScore += r.overall_score ?? 0
+          if (r.lead_qualified)     agentMap[agent].qualified++
+          if (r.appointment_booked) agentMap[agent].booked++
+          if (r.bad_attitude_flag)  agentMap[agent].badFlag++
+        }
+        const agents = Object.values(agentMap).sort((a, b) => b.calls - a.calls)
+
+        if (agents.length === 0 || (agents.length === 1 && agents[0].name === 'Unassigned')) {
+          // Fallback summary cards when no agent data yet
+          return (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Avg QA Score',       value: `${avgScore}/100`, color: scoreColor(avgScore),                       sub: `${scores.length} scored calls` },
+                { label: 'Qualified Leads',     value: qualified,          color: 'text-blue-400',                           sub: `of ${scores.length} real calls` },
+                { label: 'Appointments Booked', value: booked,             color: 'text-green-400',                          sub: 'from scored calls' },
+                { label: '⚠️ Bad Attitude',     value: badFlag,            color: badFlag ? 'text-red-400' : 'text-gray-400', sub: 'flags raised' },
+              ].map(c => (
+                <div key={c.label} className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{c.label}</p>
+                  <p className={`text-3xl font-bold ${c.color}`}>{c.value}</p>
+                  <p className="text-xs text-gray-600 mt-1">{c.sub}</p>
+                </div>
+              ))}
+            </div>
+          )
+        }
+
+        return (
+          <div>
+            <h2 className="text-lg font-semibold text-white mb-3">👤 Agent Performance</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {agents.map(a => {
+                const avg = a.calls ? Math.round(a.totalScore / a.calls) : 0
+                return (
+                  <div key={a.name} className={`bg-gray-900 rounded-xl p-4 border ${a.badFlag > 0 ? 'border-red-800' : 'border-gray-800'}`}>
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="font-semibold text-white">{a.name}</p>
+                        <p className="text-xs text-gray-500">{a.calls} call{a.calls !== 1 ? 's' : ''} scored</p>
+                      </div>
+                      <span className={`text-2xl font-black ${scoreColor(avg)}`}>{avg}<span className="text-sm text-gray-500">/100</span></span>
+                    </div>
+                    <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden mb-3">
+                      <div className={`h-full rounded-full ${scoreBg(avg)}`} style={{ width: `${avg}%` }} />
+                    </div>
+                    <div className="flex gap-3 text-xs text-gray-400">
+                      <span className="text-green-400">✅ {a.qualified} qualified</span>
+                      <span className="text-blue-400">📅 {a.booked} booked</span>
+                      {a.badFlag > 0 && <span className="text-red-400">🚨 {a.badFlag} flag{a.badFlag !== 1 ? 's' : ''}</span>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
-        ))}
-      </div>
+        )
+      })()}
 
       {/* ── QA Scorecards ── */}
       <section>
@@ -235,7 +286,7 @@ export default async function Dashboard({
                       {r.bad_attitude_flag && <span className="text-xs px-2 py-0.5 bg-red-900 text-red-300 rounded-full">🚨 Bad Attitude</span>}
                       {r.management_alert  && <span className="text-xs px-2 py-0.5 bg-orange-900 text-orange-300 rounded-full">⚠️ Mgmt Alert</span>}
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">{r.date} · {r.duration_min ? `${r.duration_min} min` : '—'} · {r.phone || '—'}</p>
+                    <p className="text-xs text-gray-500 mt-1">{r.date} · {r.duration_min ? `${r.duration_min} min` : '—'} · {r.phone || '—'}{r.agent_name ? ` · 👤 ${r.agent_name}` : ''}</p>
                   </div>
                   <div className="text-right">
                     <span className={`text-4xl font-black ${scoreColor(r.overall_score ?? 0)}`}>{r.overall_score ?? 0}</span>
