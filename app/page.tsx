@@ -162,20 +162,13 @@ export default async function Dashboard({
         </div>
       </div>
 
-      {/* ── Summary stat pills ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Avg QA Score',       value: `${avgScore}/100`, color: avgScore >= 80 ? 'text-green-400' : avgScore >= 60 ? 'text-yellow-400' : 'text-red-400', sub: `${scores.length} scored calls` },
-          { label: 'Qualified Leads',     value: qualified,          color: 'text-blue-400',   sub: `of ${scores.length} real calls` },
-          { label: 'Appointments Booked', value: booked,             color: 'text-green-400',  sub: 'from scored calls' },
-          { label: '⚠️ Bad Attitude',     value: badFlag,            color: badFlag ? 'text-red-400' : 'text-gray-400', sub: 'flags raised' },
-        ].map(c => (
-          <div key={c.label} className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{c.label}</p>
-            <p className={`text-3xl font-bold ${c.color}`}>{c.value}</p>
-            <p className="text-xs text-gray-600 mt-1">{c.sub}</p>
-          </div>
-        ))}
+      {/* ── Avg QA Score pill (static) ── */}
+      <div className="grid grid-cols-1 gap-4">
+        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 max-w-xs">
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Avg QA Score</p>
+          <p className={`text-3xl font-bold ${avgScore >= 80 ? 'text-green-400' : avgScore >= 60 ? 'text-yellow-400' : 'text-red-400'}`}>{avgScore}/100</p>
+          <p className="text-xs text-gray-600 mt-1">{scores.length} scored calls</p>
+        </div>
       </div>
 
       {/* ── Interactive dashboard (client component) ── */}

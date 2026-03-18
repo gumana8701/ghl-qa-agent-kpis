@@ -249,11 +249,135 @@ function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Sco
   )
 }
 
+// ── Stat Drill-Down Card ─────────────────────────────────────────────────────
+type StatKind = 'qualified' | 'booked' | 'badAttitude' | null
+
+function StatDrillCard({
+  kind, label, value, sub,
+  theme, calls, onClose,
+}: {
+  kind: StatKind
+  label: string
+  value: number
+  sub: string
+  theme: { border: string; bg: string; text: string; pillBg: string; pillText: string }
+  calls: Score[]
+  onClose: () => void
+}) {
+  const [selectedCall, setSelectedCall] = useState<Score | null>(null)
+
+  return (
+    <div className={`rounded-xl border-2 ${theme.border} ${theme.bg} overflow-hidden`}>
+      {/* Card header — always visible */}
+      <button
+        onClick={onClose}
+        className="w-full flex items-center justify-between px-5 py-4 hover:brightness-110 transition-all"
+      >
+        <div className="text-left">
+          <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">{label}</p>
+          <p className={`text-3xl font-bold ${theme.text}`}>{value}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{sub}</p>
+        </div>
+        <span className="text-gray-500 text-lg">▲</span>
+      </button>
+
+      {/* Expanded list */}
+      <div className={`border-t ${theme.border} px-4 pb-4`}>
+        {selectedCall ? (
+          <div className="pt-3">
+            <ScorecardCard r={selectedCall} onBack={() => setSelectedCall(null)} />
+          </div>
+        ) : (
+          <>
+            <p className="text-xs text-gray-500 py-2">Click a row to see the scorecard</p>
+            <div className="space-y-1">
+              {calls.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => setSelectedCall(c)}
+                  className="w-full text-left flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-800/60 transition-colors"
+                >
+                  <div>
+                    <span className="text-white text-sm">{c.contact_name || '—'}</span>
+                    <span className="text-gray-500 text-xs ml-2">{c.date}</span>
+                    {c.agent_name && c.agent_name !== 'Unassigned' && (
+                      <span className="text-gray-600 text-xs ml-2">· 👤 {c.agent_name}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-bold ${theme.text}`}>{c.overall_score ?? 0}</span>
+                    <span className="text-gray-600 text-xs">/100</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${theme.pillBg} ${theme.pillText}`}>
+                      {c.call_direction || '—'}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main Client Dashboard ─────────────────────────────────────────────────────
 export default function ClientDashboard({
   scores, parsedAttempts, avgScore, qualified, booked, badFlag, attemptsMet, attemptsMissed
 }: Props) {
   const [selectedAttempt, setSelectedAttempt] = useState<AttemptRow | null>(null)
+
+  // ── Stat card drill-down state ────────────────────────────────────────────
+  const [openStat, setOpenStat] = useState<StatKind>(null)
+
+  const qualifiedCalls   = scores.filter(r => r.lead_qualified === true)
+  const bookedCalls      = scores.filter(r => r.appointment_booked === true)
+  const badAttitudeCalls = scores.filter(r => r.bad_attitude_flag === true)
+
+  const statCards = [
+    {
+      kind: 'qualified' as StatKind,
+      label: 'Qualified Leads',
+      value: qualified,
+      sub: `of ${scores.length} real calls`,
+      calls: qualifiedCalls,
+      theme: {
+        border: 'border-blue-700',
+        bg: 'bg-blue-950/40',
+        text: 'text-blue-400',
+        pillBg: 'bg-blue-900',
+        pillText: 'text-blue-300',
+      },
+    },
+    {
+      kind: 'booked' as StatKind,
+      label: 'Appointments Booked',
+      value: booked,
+      sub: 'from scored calls',
+      calls: bookedCalls,
+      theme: {
+        border: 'border-green-700',
+        bg: 'bg-green-950/40',
+        text: 'text-green-400',
+        pillBg: 'bg-green-900',
+        pillText: 'text-green-300',
+      },
+    },
+    {
+      kind: 'badAttitude' as StatKind,
+      label: '⚠️ Bad Attitude',
+      value: badFlag,
+      sub: 'flags raised',
+      calls: badAttitudeCalls,
+      theme: {
+        border: 'border-red-700',
+        bg: 'bg-red-950/40',
+        text: badFlag ? 'text-red-400' : 'text-gray-400',
+        pillBg: 'bg-red-900',
+        pillText: 'text-red-300',
+      },
+    },
+  ]
 
   // ── Agent QA state ────────────────────────────────────────────────────────
   const [hiddenAgents, setHiddenAgents] = useState<Set<string>>(new Set())
@@ -289,6 +413,40 @@ export default function ClientDashboard({
 
   return (
     <div className="space-y-8">
+
+      {/* ── Interactive Stat Cards ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {statCards.map(card => {
+          const isOpen = openStat === card.kind
+          if (isOpen) {
+            return (
+              <div key={card.kind} className="sm:col-span-3">
+                <StatDrillCard
+                  kind={card.kind}
+                  label={card.label}
+                  value={card.value}
+                  sub={card.sub}
+                  theme={card.theme}
+                  calls={card.calls}
+                  onClose={() => setOpenStat(null)}
+                />
+              </div>
+            )
+          }
+          return (
+            <button
+              key={card.kind}
+              onClick={() => setOpenStat(card.kind)}
+              className={`rounded-xl border-2 ${card.theme.border} ${card.theme.bg} p-4 text-left hover:brightness-110 transition-all`}
+            >
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">{card.label}</p>
+              <p className={`text-3xl font-bold ${card.theme.text}`}>{card.value}</p>
+              <p className="text-xs text-gray-500 mt-1">{card.sub}</p>
+              <p className="text-xs text-gray-600 mt-2">Click to expand ▼</p>
+            </button>
+          )
+        })}
+      </div>
 
       {/* ── Agent QA Performance ── */}
       <div>
