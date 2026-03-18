@@ -60,19 +60,28 @@ type Props = {
 }
 
 // ── QA Scorecard (single call) ────────────────────────────────────────────────
-function ScorecardCard({ r }: { r: Score }) {
+function ScorecardCard({ r, onBack }: { r: Score; onBack?: () => void }) {
   return (
     <div className={`bg-gray-800 rounded-xl border p-4 ${r.management_alert ? 'border-red-700' : 'border-gray-700'}`}>
+      {onBack && (
+        <button onClick={onBack} className="text-xs text-gray-400 hover:text-white mb-3 flex items-center gap-1">
+          ← Back to calls
+        </button>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <div>
-          <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold text-white">{r.contact_name || '—'}</p>
+          <div className="flex flex-wrap items-center gap-2 mt-1">
             <span className={`text-xs px-2 py-0.5 rounded-full ${r.call_direction === 'inbound' ? 'bg-blue-900 text-blue-300' : 'bg-purple-900 text-purple-300'}`}>
               {r.call_direction || '—'}
             </span>
             {r.bad_attitude_flag && <span className="text-xs px-2 py-0.5 bg-red-900 text-red-300 rounded-full">🚨 Bad Attitude</span>}
             {r.management_alert  && <span className="text-xs px-2 py-0.5 bg-orange-900 text-orange-300 rounded-full">⚠️ Mgmt Alert</span>}
           </div>
-          <p className="text-xs text-gray-500 mt-1">{r.date} · {r.duration_min ? `${r.duration_min} min` : '—'}{r.agent_name ? ` · 👤 ${r.agent_name}` : ''}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {r.date} · {r.duration_min ? `${r.duration_min} min` : '—'}
+            {r.agent_name ? ` · 👤 ${r.agent_name}` : ''}
+          </p>
         </div>
         <div className="text-right">
           <span className={`text-3xl font-black ${scoreColor(r.overall_score ?? 0)}`}>{r.overall_score ?? 0}</span>
@@ -115,26 +124,85 @@ function ScorecardCard({ r }: { r: Score }) {
   )
 }
 
-// ── Side Drawer ───────────────────────────────────────────────────────────────
+// ── Agent Call List ───────────────────────────────────────────────────────────
+function AgentCallList({
+  agentName, calls, onBack, onSelectCall
+}: {
+  agentName: string
+  calls: Score[]
+  onBack: () => void
+  onSelectCall: (call: Score) => void
+}) {
+  const sorted = [...calls].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+  return (
+    <div>
+      <button onClick={onBack} className="text-xs text-gray-400 hover:text-white mb-4 flex items-center gap-1">
+        ← Back to all agents
+      </button>
+      <h3 className="text-white font-semibold text-base mb-1">👤 {agentName}</h3>
+      <p className="text-xs text-gray-500 mb-4">{calls.length} call{calls.length !== 1 ? 's' : ''} scored — click a row for details</p>
+
+      <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-800 text-gray-400 text-left">
+              <th className="px-4 py-3">Date</th>
+              <th className="px-4 py-3">Contact</th>
+              <th className="px-4 py-3">Direction</th>
+              <th className="px-4 py-3">Duration</th>
+              <th className="px-4 py-3">Score</th>
+              <th className="px-4 py-3">Flags</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map(c => (
+              <tr
+                key={c.id}
+                onClick={() => onSelectCall(c)}
+                className="border-b border-gray-800/50 hover:bg-gray-800/60 cursor-pointer transition-colors"
+              >
+                <td className="px-4 py-3 text-gray-400">{c.date || '—'}</td>
+                <td className="px-4 py-3 text-white">{c.contact_name || '—'}</td>
+                <td className="px-4 py-3">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${c.call_direction === 'inbound' ? 'bg-blue-900 text-blue-300' : 'bg-purple-900 text-purple-300'}`}>
+                    {c.call_direction || '—'}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-gray-400">{c.duration_min ? `${c.duration_min} min` : '—'}</td>
+                <td className="px-4 py-3">
+                  <span className={`font-bold ${scoreColor(c.overall_score ?? 0)}`}>{c.overall_score ?? 0}</span>
+                  <span className="text-gray-600 text-xs">/100</span>
+                </td>
+                <td className="px-4 py-3 flex gap-1 flex-wrap">
+                  {c.voicemail_flag  && <span className="text-xs px-1.5 py-0.5 bg-gray-700 text-gray-400 rounded">VM</span>}
+                  {c.bad_attitude_flag && <span className="text-xs px-1.5 py-0.5 bg-red-900 text-red-300 rounded">🚨</span>}
+                  {c.management_alert  && <span className="text-xs px-1.5 py-0.5 bg-orange-900 text-orange-300 rounded">⚠️</span>}
+                  {!c.voicemail_flag && !c.bad_attitude_flag && !c.management_alert && <span className="text-gray-600 text-xs">—</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ── Side Drawer (KPI Table) ───────────────────────────────────────────────────
 function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Score[]; onClose: () => void }) {
   const contactScores = scores.filter(s => s.contact_id === attempt.contactId)
 
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/60 z-40" onClick={onClose} />
-
-      {/* Panel */}
       <div className="fixed top-0 right-0 h-full w-full max-w-xl bg-gray-900 border-l border-gray-700 z-50 flex flex-col shadow-2xl">
-
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
           <div>
             <h2 className="font-semibold text-white text-lg capitalize">{attempt.name}</h2>
             <p className="text-xs text-gray-500">{attempt.date} · KPI {attempt.amMet && attempt.pmMet ? '✅ Met' : '❌ Missed'}</p>
           </div>
           <div className="flex items-center gap-3">
-            {attempt.contactId ? (
+            {attempt.contactId && (
               <a
                 href={`https://app.gohighlevel.com/v2/location/${GHL_LOC}/contacts/detail/${attempt.contactId}`}
                 target="_blank" rel="noopener noreferrer"
@@ -142,12 +210,10 @@ function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Sco
               >
                 Go to Contact ↗
               </a>
-            ) : null}
+            )}
             <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
           </div>
         </div>
-
-        {/* KPI summary */}
         <div className="px-5 py-3 border-b border-gray-800 flex gap-6 text-sm">
           <div>
             <p className="text-gray-500 text-xs">AM Calls</p>
@@ -168,8 +234,6 @@ function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Sco
             <p className="text-white font-medium">{contactScores.length}</p>
           </div>
         </div>
-
-        {/* Scrollable scorecards */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {contactScores.length === 0 ? (
             <div className="text-center text-gray-500 py-10">
@@ -191,38 +255,114 @@ export default function ClientDashboard({
 }: Props) {
   const [selectedAttempt, setSelectedAttempt] = useState<AttemptRow | null>(null)
 
-  // Build agent stats
-  type AgentStat = { name: string; calls: number; totalScore: number; qualified: number; booked: number; badFlag: number }
+  // ── Agent QA state ────────────────────────────────────────────────────────
+  const [hiddenAgents, setHiddenAgents] = useState<Set<string>>(new Set())
+  const [showAgentFilter, setShowAgentFilter] = useState(false)
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  const [selectedCall, setSelectedCall] = useState<Score | null>(null)
+
+  // Build agent stats from all scores
+  type AgentStat = { name: string; calls: number; totalScore: number; qualified: number; booked: number; badFlag: number; callList: Score[] }
   const agentMap: Record<string, AgentStat> = {}
   for (const r of scores) {
     const agent = (r.agent_name && r.agent_name !== 'Unassigned' && r.agent_name !== 'Pending') ? r.agent_name : null
     if (!agent) continue
-    if (!agentMap[agent]) agentMap[agent] = { name: agent, calls: 0, totalScore: 0, qualified: 0, booked: 0, badFlag: 0 }
+    if (!agentMap[agent]) agentMap[agent] = { name: agent, calls: 0, totalScore: 0, qualified: 0, booked: 0, badFlag: 0, callList: [] }
     agentMap[agent].calls++
     agentMap[agent].totalScore += r.overall_score ?? 0
     if (r.lead_qualified)     agentMap[agent].qualified++
     if (r.appointment_booked) agentMap[agent].booked++
     if (r.bad_attitude_flag)  agentMap[agent].badFlag++
+    agentMap[agent].callList.push(r)
   }
-  const agents = Object.values(agentMap).sort((a, b) => b.calls - a.calls)
+  const allAgents = Object.values(agentMap).sort((a, b) => b.calls - a.calls)
+  const visibleAgents = allAgents.filter(a => !hiddenAgents.has(a.name))
+
+  function toggleAgent(name: string) {
+    setHiddenAgents(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
 
   return (
     <div className="space-y-8">
 
       {/* ── Agent QA Performance ── */}
       <div>
-        <h2 className="text-lg font-semibold text-white mb-3">👤 Agent QA Performance</h2>
-        {agents.length === 0 ? (
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h2 className="text-lg font-semibold text-white">👤 Agent QA Performance</h2>
+          {allAgents.length > 0 && !selectedAgent && !selectedCall && (
+            <button
+              onClick={() => setShowAgentFilter(v => !v)}
+              className="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-colors"
+            >
+              {showAgentFilter ? 'Hide Filter ▲' : `Filter Agents ▼ ${hiddenAgents.size > 0 ? `(${hiddenAgents.size} hidden)` : ''}`}
+            </button>
+          )}
+          {(selectedAgent || selectedCall) && (
+            <button
+              onClick={() => { setSelectedAgent(null); setSelectedCall(null) }}
+              className="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-colors"
+            >
+              ← All Agents
+            </button>
+          )}
+        </div>
+
+        {/* Agent filter checkboxes */}
+        {showAgentFilter && !selectedAgent && !selectedCall && allAgents.length > 0 && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+            <p className="text-xs text-gray-500 mb-3">Check agents to show in the view below. All are available.</p>
+            <div className="flex flex-wrap gap-3">
+              {allAgents.map(a => (
+                <label key={a.name} className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!hiddenAgents.has(a.name)}
+                    onChange={() => toggleAgent(a.name)}
+                    className="accent-orange-500 w-4 h-4"
+                  />
+                  <span className={`text-sm ${hiddenAgents.has(a.name) ? 'text-gray-600' : 'text-gray-200'}`}>
+                    {a.name}
+                    <span className="text-gray-600 text-xs ml-1">({a.calls})</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Call detail view */}
+        {selectedCall ? (
+          <ScorecardCard r={selectedCall} onBack={() => setSelectedCall(null)} />
+        ) : selectedAgent ? (
+          /* Agent call list */
+          <AgentCallList
+            agentName={selectedAgent}
+            calls={agentMap[selectedAgent]?.callList ?? []}
+            onBack={() => setSelectedAgent(null)}
+            onSelectCall={(call) => setSelectedCall(call)}
+          />
+        ) : allAgents.length === 0 ? (
+          /* No data */
           <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 text-center text-gray-500">
             No QA scores with agent data yet in this period.
             <p className="text-xs mt-1 text-gray-600">The QA Agent needs to process real calls (non-voicemail) with agent_name assigned.</p>
           </div>
         ) : (
+          /* Agent cards grid */
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {agents.map(a => {
+            {visibleAgents.map(a => {
               const avg = a.calls ? Math.round(a.totalScore / a.calls) : 0
               return (
-                <div key={a.name} className={`bg-gray-900 rounded-xl p-4 border ${a.badFlag > 0 ? 'border-red-800' : 'border-gray-800'}`}>
+                <div
+                  key={a.name}
+                  onClick={() => setSelectedAgent(a.name)}
+                  className={`bg-gray-900 rounded-xl p-4 border cursor-pointer hover:border-gray-600 transition-all ${a.badFlag > 0 ? 'border-red-800' : 'border-gray-800'}`}
+                >
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <p className="font-semibold text-white">{a.name}</p>
@@ -241,9 +381,15 @@ export default function ClientDashboard({
                     <span className="text-blue-400">📅 {a.booked} booked</span>
                     {a.badFlag > 0 && <span className="text-red-400">🚨 {a.badFlag} flag{a.badFlag !== 1 ? 's' : ''}</span>}
                   </div>
+                  <p className="text-xs text-gray-600 mt-2">Click to see calls →</p>
                 </div>
               )
             })}
+            {visibleAgents.length === 0 && allAgents.length > 0 && (
+              <div className="col-span-3 text-center text-gray-500 py-6 text-sm">
+                All agents are hidden. Use the filter to show them.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -289,9 +435,7 @@ export default function ClientDashboard({
                   >
                     <td className="px-4 py-3">
                       <span className="text-white capitalize">{r.name}</span>
-                      {r.contactId && (
-                        <span className="ml-1 text-xs text-gray-600">↗</span>
-                      )}
+                      {r.contactId && <span className="ml-1 text-xs text-gray-600">↗</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-400">{r.date}</td>
                     <td className="px-4 py-3">
@@ -333,7 +477,7 @@ export default function ClientDashboard({
         )}
       </section>
 
-      {/* ── Side Drawer ── */}
+      {/* ── Side Drawer (KPI) ── */}
       {selectedAttempt && (
         <Drawer
           attempt={selectedAttempt}
