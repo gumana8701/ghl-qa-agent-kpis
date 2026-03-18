@@ -74,18 +74,17 @@ export default async function Dashboard({
     .order('id', { ascending: false })
     .limit(500)
 
-  // Attempt KPI alerts in date range
-  const { data: rawAlerts } = await supabase
-    .from('management_alerts')
+  // Contact KPI from dedicated table
+  const { data: rawKpi } = await supabase
+    .from('contact_kpi')
     .select('*')
-    .gte('date', from)
-    .lte('date', to)
+    .gte('kpi_date', from)
+    .lte('kpi_date', to)
     .order('id', { ascending: false })
-    .limit(500)
+    .limit(1000)
 
-  const scores      = rawScores ?? []
-  const alerts      = rawAlerts ?? []
-  const attemptRows = alerts.filter(a => (a.summary ?? '').startsWith('ATTEMPTS |'))
+  const scores = rawScores ?? []
+  const kpiRows = rawKpi ?? []
 
   // Summary stats
   const avgScore  = scores.length
@@ -95,25 +94,30 @@ export default async function Dashboard({
   const booked    = scores.filter(r => r.appointment_booked === true).length
   const badFlag   = scores.filter(r => r.bad_attitude_flag === true).length
 
-  // Parse attempt rows
-  const parsedAttempts = attemptRows.map(a => {
-    const parts     = (a.summary ?? '').split(' | ')
-    const name      = parts[1]?.trim() ?? '—'
-    const contactId = parts[2]?.trim() ?? ''
-    const rest      = parts[3]?.trim() ?? ''
-    const status    = parts[4]?.trim() ?? ''
-    const contacted = status === 'CONTACTED' || a.overall_score >= 100
-    const amMatch   = rest.match(/AM:(\d+)\/(\d+)/)
-    const pmMatch   = rest.match(/PM:(\d+)\/(\d+)/)
-    const amDone    = parseInt(amMatch?.[1] ?? '0')
-    const amReq     = parseInt(amMatch?.[2] ?? '3')
+  // Parse KPI rows — already clean columns, no string parsing needed
+  const parsedAttempts = kpiRows.map(a => {
+    const contacted = a.contacted === true
+    const amDone    = a.am_calls ?? 0
+    const amReq     = 3
+    const pmDone    = a.pm_calls ?? 0
+    const pmReq     = 3
+    const name      = a.contact_name || '—'
+    const contactId = a.contact_id || ''
+    // legacy compat vars (keep same shape for ClientDashboard)
+    const amDoneX   = amDone
+    const amReqX    = amReq
     const pmDone    = parseInt(pmMatch?.[1] ?? '0')
-    const pmReq     = parseInt(pmMatch?.[2] ?? '3')
     return {
-      id: a.id, date: a.date, name, contactId,
-      amDone, amReq, pmDone, pmReq,
-      amMet: contacted || amDone >= amReq,
-      pmMet: contacted || pmDone >= pmReq,
+      id: a.id,
+      date: a.kpi_date ?? '',
+      name,
+      contactId,
+      amDone: amDoneX,
+      amReq: amReqX,
+      pmDone,
+      pmReq,
+      amMet: a.kpi_met === true || contacted || amDoneX >= amReqX,
+      pmMet: a.kpi_met === true || contacted || pmDone >= pmReq,
       contacted,
     }
   })
