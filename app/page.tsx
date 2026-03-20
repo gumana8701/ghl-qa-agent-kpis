@@ -103,20 +103,16 @@ export default async function Dashboard({
     const pmReq     = 3
     const name      = a.contact_name || '—'
     const contactId = a.contact_id || ''
-    // legacy compat vars (keep same shape for ClientDashboard)
-    const amDoneX   = amDone
-    const amReqX    = amReq
-    const pmDone    = parseInt(pmMatch?.[1] ?? '0')
     return {
       id: a.id,
       date: a.kpi_date ?? '',
       name,
       contactId,
-      amDone: amDoneX,
-      amReq: amReqX,
+      amDone,
+      amReq,
       pmDone,
       pmReq,
-      amMet: a.kpi_met === true || contacted || amDoneX >= amReqX,
+      amMet: a.kpi_met === true || contacted || amDone >= amReq,
       pmMet: a.kpi_met === true || contacted || pmDone >= pmReq,
       contacted,
     }
