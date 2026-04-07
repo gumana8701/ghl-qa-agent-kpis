@@ -74,17 +74,17 @@ export default async function Dashboard({
     .order('id', { ascending: false })
     .limit(500)
 
-  // Contact KPI from dedicated table
-  const { data: rawKpi } = await supabase
-    .from('contact_kpi')
+  // Contact Attempts — new 3-bucket table
+  const { data: rawAttempts } = await supabase
+    .from('contact_attempts')
     .select('*')
     .gte('kpi_date', from)
     .lte('kpi_date', to)
     .order('id', { ascending: false })
     .limit(1000)
 
-  const scores = rawScores ?? []
-  const kpiRows = rawKpi ?? []
+  const scores   = rawScores ?? []
+  const kpiRows  = rawAttempts ?? []
 
   // Summary stats
   const avgScore  = scores.length
@@ -94,32 +94,38 @@ export default async function Dashboard({
   const booked    = scores.filter(r => r.appointment_booked === true).length
   const badFlag   = scores.filter(r => r.bad_attitude_flag === true).length
 
-  // Parse KPI rows — already clean columns, no string parsing needed
+  // Parse attempt rows — new 3-bucket schema
   const parsedAttempts = kpiRows.map(a => {
-    const contacted = a.contacted === true
-    const amDone    = a.am_calls ?? 0
-    const amReq     = 3
-    const pmDone    = a.pm_calls ?? 0
-    const pmReq     = 3
-    const name      = a.contact_name || '—'
-    const contactId = a.contact_id || ''
+    const contacted      = a.contacted === true
+    const morningDone    = a.morning_calls   ?? a.am_calls ?? 0
+    const afternoonDone  = a.afternoon_calls ?? a.pm_calls ?? 0
+    const eveningDone    = a.evening_calls   ?? 0
+    const status         = a.status ?? (a.kpi_met ? 'COMPLETE' : 'FAIL')
+    const createdBucket  = a.created_bucket ?? 'unknown'
     return {
-      id: a.id,
-      date: a.kpi_date ?? '',
-      name,
-      contactId,
-      amDone,
-      amReq,
-      pmDone,
-      pmReq,
-      amMet: a.kpi_met === true || contacted || amDone >= amReq,
-      pmMet: a.kpi_met === true || contacted || pmDone >= pmReq,
+      id:            a.id,
+      date:          a.kpi_date ?? '',
+      name:          a.contact_name || '—',
+      contactId:     a.contact_id || '',
+      morningDone,
+      afternoonDone,
+      eveningDone,
       contacted,
+      status,
+      createdBucket,
+      kpiReason:     a.kpi_reason ?? '',
+      // legacy compat
+      amDone: morningDone,    amReq: 2,
+      pmDone: afternoonDone,  pmReq: 2,
+      amMet: status === 'ANSWERED' || status === 'COMPLETE' || morningDone >= 2,
+      pmMet: status === 'ANSWERED' || status === 'COMPLETE' || afternoonDone >= 2,
     }
   })
 
-  const attemptsMet    = parsedAttempts.filter(r => r.amMet && r.pmMet).length
-  const attemptsMissed = parsedAttempts.filter(r => !r.amMet || !r.pmMet).length
+  const attemptsMet     = parsedAttempts.filter(r => r.status === 'ANSWERED' || r.status === 'COMPLETE').length
+  const attemptsMissed  = parsedAttempts.filter(r => r.status === 'FAIL').length
+  const attemptsAnswered = parsedAttempts.filter(r => r.status === 'ANSWERED').length
+  const attemptsComplete = parsedAttempts.filter(r => r.status === 'COMPLETE').length
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
@@ -181,6 +187,8 @@ export default async function Dashboard({
         badFlag={badFlag}
         attemptsMet={attemptsMet}
         attemptsMissed={attemptsMissed}
+        attemptsAnswered={attemptsAnswered}
+        attemptsComplete={attemptsComplete}
       />
 
     </div>

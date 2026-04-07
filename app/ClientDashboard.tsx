@@ -23,10 +23,14 @@ function Bar({ value, max = 10 }: { value: number; max?: number }) {
     </div>
   )
 }
-function KpiPill({ met }: { met: boolean }) {
-  return met
-    ? <span className="text-xs px-2 py-0.5 bg-green-900 text-green-300 rounded-full font-medium">✅ Met</span>
-    : <span className="text-xs px-2 py-0.5 bg-red-900 text-red-300 rounded-full font-medium">❌ Missed</span>
+function KpiPill({ status }: { status: string }) {
+  if (status === 'ANSWERED')
+    return <span className="text-xs px-2 py-0.5 bg-blue-900 text-blue-300 rounded-full font-medium">📞 ANSWERED</span>
+  if (status === 'COMPLETE')
+    return <span className="text-xs px-2 py-0.5 bg-green-900 text-green-300 rounded-full font-medium">✅ COMPLETE</span>
+  if (status === 'FAIL')
+    return <span className="text-xs px-2 py-0.5 bg-red-900 text-red-300 rounded-full font-medium">❌ FAIL</span>
+  return <span className="text-xs px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full font-medium">⏳ {status}</span>
 }
 
 const CRITERIA: { key: string; label: string; max: number }[] = [
@@ -40,12 +44,28 @@ const CRITERIA: { key: string; label: string; max: number }[] = [
 
 const GHL_LOC = 'OEvyZgDZMvPWYEYrBTxR'
 
+function BucketCell({ done, req }: { done: number; req: number }) {
+  const met = done >= req
+  return (
+    <div className="flex items-center gap-2">
+      <span className={met ? 'text-green-400' : 'text-red-400'}>{done}/{req}</span>
+      <div className="w-14 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${met ? 'bg-green-500' : 'bg-red-500'}`}
+             style={{ width: `${Math.min(100,(done/req)*100)}%` }} />
+      </div>
+    </div>
+  )
+}
+
 // ── types ─────────────────────────────────────────────────────────────────────
 type Score = Record<string, any>
 type AttemptRow = {
   id: number; date: string; name: string; contactId: string;
+  morningDone: number; afternoonDone: number; eveningDone: number;
+  contacted: boolean; status: string; createdBucket: string; kpiReason: string;
+  // legacy
   amDone: number; amReq: number; pmDone: number; pmReq: number;
-  amMet: boolean; pmMet: boolean; contacted: boolean
+  amMet: boolean; pmMet: boolean;
 }
 
 type Props = {
@@ -57,6 +77,8 @@ type Props = {
   badFlag: number
   attemptsMet: number
   attemptsMissed: number
+  attemptsAnswered: number
+  attemptsComplete: number
 }
 
 // ── QA Scorecard (single call) ────────────────────────────────────────────────
@@ -323,7 +345,8 @@ function StatDrillCard({
 
 // ── Main Client Dashboard ─────────────────────────────────────────────────────
 export default function ClientDashboard({
-  scores, parsedAttempts, avgScore, qualified, booked, badFlag, attemptsMet, attemptsMissed
+  scores, parsedAttempts, avgScore, qualified, booked, badFlag,
+  attemptsMet, attemptsMissed, attemptsAnswered, attemptsComplete
 }: Props) {
   const [selectedAttempt, setSelectedAttempt] = useState<AttemptRow | null>(null)
 
@@ -558,13 +581,14 @@ export default function ClientDashboard({
           <div>
             <h2 className="text-lg font-semibold text-white">
               📞 Call Attempt KPI
-              <span className="text-sm text-gray-500 font-normal ml-2">(3 AM + 3 PM per lead)</span>
+              <span className="text-sm text-gray-500 font-normal ml-2">(2 Morning + 2 Afternoon + 2 Evening)</span>
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">Click a row to see QA scorecards for that contact</p>
           </div>
-          <div className="flex gap-3 text-sm">
-            <span className="text-green-400 font-medium">✅ Met: {attemptsMet}</span>
-            <span className="text-red-400 font-medium">❌ Missed: {attemptsMissed}</span>
+          <div className="flex flex-wrap gap-3 text-sm">
+            <span className="text-blue-400 font-medium">📞 Answered: {attemptsAnswered}</span>
+            <span className="text-green-400 font-medium">✅ Complete: {attemptsComplete}</span>
+            <span className="text-red-400 font-medium">❌ Fail: {attemptsMissed}</span>
           </div>
         </div>
 
@@ -579,9 +603,10 @@ export default function ClientDashboard({
                 <tr className="border-b border-gray-800 text-gray-400 text-left">
                   <th className="px-4 py-3">Lead</th>
                   <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">AM Calls</th>
-                  <th className="px-4 py-3">PM Calls</th>
-                  <th className="px-4 py-3">KPI</th>
+                  <th className="px-4 py-3">🌅 Morning</th>
+                  <th className="px-4 py-3">☀️ Afternoon</th>
+                  <th className="px-4 py-3">🌆 Evening</th>
+                  <th className="px-4 py-3">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -594,38 +619,32 @@ export default function ClientDashboard({
                     <td className="px-4 py-3">
                       <span className="text-white capitalize">{r.name}</span>
                       {r.contactId && <span className="ml-1 text-xs text-gray-600">↗</span>}
+                      {r.createdBucket && <span className="ml-2 text-xs text-gray-600">({r.createdBucket})</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-400">{r.date}</td>
                     <td className="px-4 py-3">
-                      {r.contacted ? (
-                        <span className="text-green-400 text-xs">✅ Contacted</span>
-                      ) : (
+                      {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
+                        <BucketCell done={r.morningDone} req={2} />
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
+                        <BucketCell done={r.afternoonDone} req={2} />
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
                         <div className="flex items-center gap-2">
-                          <span className={r.amMet ? 'text-green-400' : 'text-red-400'}>{r.amDone}/{r.amReq}</span>
+                          <span className={r.eveningDone >= 2 ? 'text-green-400' : 'text-red-400'}>{r.eveningDone}/2</span>
                           <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${r.amMet ? 'bg-green-500' : 'bg-red-500'}`}
-                                 style={{ width: `${Math.min(100,(r.amDone/r.amReq)*100)}%` }} />
+                            <div className={`h-full rounded-full ${r.eveningDone >= 2 ? 'bg-green-500' : 'bg-red-500'}`}
+                                 style={{ width: `${Math.min(100,(r.eveningDone/2)*100)}%` }} />
                           </div>
                         </div>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {r.contacted ? (
-                        <span className="text-green-400 text-xs">✅ Contacted</span>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className={r.pmMet ? 'text-green-400' : 'text-red-400'}>{r.pmDone}/{r.pmReq}</span>
-                          <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${r.pmMet ? 'bg-green-500' : 'bg-red-500'}`}
-                                 style={{ width: `${Math.min(100,(r.pmDone/r.pmReq)*100)}%` }} />
-                          </div>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {r.contacted
-                        ? <span className="text-xs px-2 py-0.5 bg-green-900 text-green-300 rounded-full font-medium">✅ KPI Met</span>
-                        : <KpiPill met={r.amMet && r.pmMet} />}
+                      <KpiPill status={r.status} />
                     </td>
                   </tr>
                 ))}
