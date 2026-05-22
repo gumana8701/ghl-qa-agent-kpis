@@ -77,6 +77,7 @@ type AttemptRow = {
   id: number; date: string; name: string; contactId: string;
   morningDone: number; afternoonDone: number; eveningDone: number;
   contacted: boolean; status: string; createdBucket: string; kpiReason: string;
+  completionPct: number;
   // legacy
   amDone: number; amReq: number; pmDone: number; pmReq: number;
   amMet: boolean; pmMet: boolean;
@@ -703,6 +704,7 @@ export default function ClientDashboard({
                   <th className="px-4 py-3">🌅 Morning</th>
                   <th className="px-4 py-3">☀️ Afternoon</th>
                   <th className="px-4 py-3">🌆 Evening</th>
+                  <th className="px-4 py-3">% Done</th>
                   <th className="px-4 py-3">Status</th>
                 </tr>
               </thead>
@@ -733,6 +735,21 @@ export default function ClientDashboard({
                       {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
                         <BucketCell done={r.eveningDone} req={3} required={bucketsRequired(r.createdBucket).evening} />
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const pct = r.completionPct ?? 0
+                        const color = pct >= 100 ? 'text-green-400' : pct >= 60 ? 'text-yellow-400' : 'text-red-400'
+                        return (
+                          <div className="flex items-center gap-2">
+                            <span className={`font-medium ${color}`}>{pct}%</span>
+                            <div className="w-12 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${pct >= 100 ? 'bg-green-500' : pct >= 60 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                   style={{ width: `${Math.min(100, pct)}%` }} />
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td className="px-4 py-3">
                       <KpiPill status={r.status} />

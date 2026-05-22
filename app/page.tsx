@@ -102,6 +102,10 @@ export default async function Dashboard({
     const eveningDone    = a.evening_calls   ?? 0
     const status         = a.status ?? (a.kpi_met ? 'COMPLETE' : 'FAIL')
     const createdBucket  = a.created_bucket ?? 'unknown'
+    const totalDone      = morningDone + afternoonDone + eveningDone
+    const completionPct  = (status === 'ANSWERED' || status === 'COMPLETE')
+      ? 100
+      : Math.min(100, Math.round((totalDone / 9) * 100))
     return {
       id:            a.id,
       date:          a.kpi_date ?? '',
@@ -113,6 +117,7 @@ export default async function Dashboard({
       contacted,
       status,
       createdBucket,
+      completionPct,
       kpiReason:     a.kpi_reason ?? '',
       // legacy compat
       amDone: morningDone,    amReq: 2,
