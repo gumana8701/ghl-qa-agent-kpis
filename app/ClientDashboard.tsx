@@ -28,6 +28,8 @@ function KpiPill({ status }: { status: string }) {
     return <span className="text-xs px-2 py-0.5 bg-blue-900 text-blue-300 rounded-full font-medium">📞 ANSWERED</span>
   if (status === 'COMPLETE')
     return <span className="text-xs px-2 py-0.5 bg-green-900 text-green-300 rounded-full font-medium">✅ COMPLETE</span>
+  if (status === 'NOT_ANSWERED')
+    return <span className="text-xs px-2 py-0.5 bg-orange-900 text-orange-300 rounded-full font-medium">📵 NOT ANSWERED</span>
   if (status === 'FAIL')
     return <span className="text-xs px-2 py-0.5 bg-red-900 text-red-300 rounded-full font-medium">❌ FAIL</span>
   return <span className="text-xs px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full font-medium">⏳ {status}</span>
@@ -280,11 +282,22 @@ function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Sco
             </div>
           </div>
         )}
+        {attempt.status === 'NOT_ANSWERED' && (
+          <div className="px-5 py-3 bg-orange-950/60 border-b border-orange-800 flex items-center gap-3">
+            <span className="text-2xl">📵</span>
+            <div>
+              <p className="text-orange-300 font-semibold text-sm">Not Answered — All Attempts Exhausted</p>
+              <p className="text-orange-400 text-xs mt-0.5">
+                {attempt.kpiReason || 'All attempts were made but lead never picked up.'}
+              </p>
+            </div>
+          </div>
+        )}
         {attempt.status === 'FAIL' && (
           <div className="px-5 py-3 bg-red-950/60 border-b border-red-800 flex items-center gap-3">
             <span className="text-2xl">❌</span>
             <div>
-              <p className="text-red-300 font-semibold text-sm">KPI Not Met</p>
+              <p className="text-red-300 font-semibold text-sm">Incomplete — Tracking Window Expired</p>
               <p className="text-red-400 text-xs mt-0.5">
                 {attempt.kpiReason || 'Tracking window expired without completing all required attempts.'}
               </p>
@@ -313,21 +326,21 @@ function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Sco
                   <p className="text-gray-500 text-xs">🌅 Morning</p>
                   {!req.morning ? <p className="text-gray-600 text-xs">Not required</p>
                     : answered ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
-                    : <p className={attempt.morningDone >= 2 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.morningDone}/2</p>
+                    : <p className={attempt.morningDone >= 3 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.morningDone}/3</p>
                   }
                 </div>
                 <div>
                   <p className="text-gray-500 text-xs">☀️ Afternoon</p>
                   {!req.afternoon ? <p className="text-gray-600 text-xs">Not required</p>
                     : answered ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
-                    : <p className={attempt.afternoonDone >= 2 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.afternoonDone}/2</p>
+                    : <p className={attempt.afternoonDone >= 3 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.afternoonDone}/3</p>
                   }
                 </div>
                 <div>
                   <p className="text-gray-500 text-xs">🌆 Evening</p>
                   {!req.evening ? <p className="text-gray-600 text-xs">Not required</p>
                     : answered ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
-                    : <p className={attempt.eveningDone >= 2 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.eveningDone}/2</p>
+                    : <p className={attempt.eveningDone >= 3 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.eveningDone}/3</p>
                   }
                 </div>
               </>
@@ -671,6 +684,7 @@ export default function ClientDashboard({
           <div className="flex flex-wrap gap-3 text-sm">
             <span className="text-blue-400 font-medium">📞 Answered: {attemptsAnswered}</span>
             <span className="text-green-400 font-medium">✅ Complete: {attemptsComplete}</span>
+            <span className="text-orange-400 font-medium">📵 Not Answered: {parsedAttempts.filter(r => r.status === 'NOT_ANSWERED').length}</span>
             <span className="text-red-400 font-medium">❌ Fail: {attemptsMissed}</span>
           </div>
         </div>
@@ -707,17 +721,17 @@ export default function ClientDashboard({
                     <td className="px-4 py-3 text-gray-400">{r.date}</td>
                     <td className="px-4 py-3">
                       {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
-                        <BucketCell done={r.morningDone} req={2} required={bucketsRequired(r.createdBucket).morning} />
+                        <BucketCell done={r.morningDone} req={3} required={bucketsRequired(r.createdBucket).morning} />
                       )}
                     </td>
                     <td className="px-4 py-3">
                       {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
-                        <BucketCell done={r.afternoonDone} req={2} required={bucketsRequired(r.createdBucket).afternoon} />
+                        <BucketCell done={r.afternoonDone} req={3} required={bucketsRequired(r.createdBucket).afternoon} />
                       )}
                     </td>
                     <td className="px-4 py-3">
                       {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
-                        <BucketCell done={r.eveningDone} req={2} required={bucketsRequired(r.createdBucket).evening} />
+                        <BucketCell done={r.eveningDone} req={3} required={bucketsRequired(r.createdBucket).evening} />
                       )}
                     </td>
                     <td className="px-4 py-3">
