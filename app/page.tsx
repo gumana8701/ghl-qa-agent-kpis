@@ -117,8 +117,8 @@ export default async function Dashboard({
       // legacy compat
       amDone: morningDone,    amReq: 2,
       pmDone: afternoonDone,  pmReq: 2,
-      amMet: status === 'ANSWERED' || status === 'COMPLETE' || morningDone >= 2,
-      pmMet: status === 'ANSWERED' || status === 'COMPLETE' || afternoonDone >= 2,
+      amMet: status === 'ANSWERED' || status === 'COMPLETE' || morningDone >= 3,
+      pmMet: status === 'ANSWERED' || status === 'COMPLETE' || afternoonDone >= 3,
     }
   })
 
