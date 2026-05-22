@@ -44,7 +44,8 @@ const CRITERIA: { key: string; label: string; max: number }[] = [
 
 const GHL_LOC = 'OEvyZgDZMvPWYEYrBTxR'
 
-function BucketCell({ done, req }: { done: number; req: number }) {
+function BucketCell({ done, req, required = true }: { done: number; req: number; required?: boolean }) {
+  if (!required) return <span className="text-gray-600 text-xs">—</span>
   const met = done >= req
   return (
     <div className="flex items-center gap-2">
@@ -55,6 +56,17 @@ function BucketCell({ done, req }: { done: number; req: number }) {
       </div>
     </div>
   )
+}
+
+// Determine which buckets are required based on createdBucket
+function bucketsRequired(createdBucket: string): { morning: boolean; afternoon: boolean; evening: boolean } {
+  switch (createdBucket) {
+    case 'morning':   return { morning: true,  afternoon: true,  evening: true  }
+    case 'afternoon': return { morning: false, afternoon: true,  evening: true  }
+    case 'evening':   return { morning: false, afternoon: false, evening: true  }
+    case 'off-hours': return { morning: true,  afternoon: true,  evening: true  }
+    default:          return { morning: true,  afternoon: true,  evening: true  }
+  }
 }
 
 // ── types ─────────────────────────────────────────────────────────────────────
@@ -292,27 +304,35 @@ function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Sco
         )}
 
         <div className="px-5 py-3 border-b border-gray-800 flex gap-6 text-sm">
-          <div>
-            <p className="text-gray-500 text-xs">🌅 Morning</p>
-            {attempt.status === 'ANSWERED'
-              ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
-              : <p className={attempt.morningDone >= 2 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.morningDone}/2</p>
-            }
-          </div>
-          <div>
-            <p className="text-gray-500 text-xs">☀️ Afternoon</p>
-            {attempt.status === 'ANSWERED'
-              ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
-              : <p className={attempt.afternoonDone >= 2 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.afternoonDone}/2</p>
-            }
-          </div>
-          <div>
-            <p className="text-gray-500 text-xs">🌆 Evening</p>
-            {attempt.status === 'ANSWERED'
-              ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
-              : <p className={attempt.eveningDone >= 2 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.eveningDone}/2</p>
-            }
-          </div>
+          {(() => {
+            const req = bucketsRequired(attempt.createdBucket)
+            const answered = attempt.status === 'ANSWERED'
+            return (
+              <>
+                <div>
+                  <p className="text-gray-500 text-xs">🌅 Morning</p>
+                  {!req.morning ? <p className="text-gray-600 text-xs">Not required</p>
+                    : answered ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
+                    : <p className={attempt.morningDone >= 2 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.morningDone}/2</p>
+                  }
+                </div>
+                <div>
+                  <p className="text-gray-500 text-xs">☀️ Afternoon</p>
+                  {!req.afternoon ? <p className="text-gray-600 text-xs">Not required</p>
+                    : answered ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
+                    : <p className={attempt.afternoonDone >= 2 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.afternoonDone}/2</p>
+                  }
+                </div>
+                <div>
+                  <p className="text-gray-500 text-xs">🌆 Evening</p>
+                  {!req.evening ? <p className="text-gray-600 text-xs">Not required</p>
+                    : answered ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
+                    : <p className={attempt.eveningDone >= 2 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.eveningDone}/2</p>
+                  }
+                </div>
+              </>
+            )
+          })()}
           </div>
           <div>
             <p className="text-gray-500 text-xs">QA Calls scored</p>
@@ -687,23 +707,17 @@ export default function ClientDashboard({
                     <td className="px-4 py-3 text-gray-400">{r.date}</td>
                     <td className="px-4 py-3">
                       {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
-                        <BucketCell done={r.morningDone} req={2} />
+                        <BucketCell done={r.morningDone} req={2} required={bucketsRequired(r.createdBucket).morning} />
                       )}
                     </td>
                     <td className="px-4 py-3">
                       {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
-                        <BucketCell done={r.afternoonDone} req={2} />
+                        <BucketCell done={r.afternoonDone} req={2} required={bucketsRequired(r.createdBucket).afternoon} />
                       )}
                     </td>
                     <td className="px-4 py-3">
                       {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
-                        <div className="flex items-center gap-2">
-                          <span className={r.eveningDone >= 2 ? 'text-green-400' : 'text-red-400'}>{r.eveningDone}/2</span>
-                          <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${r.eveningDone >= 2 ? 'bg-green-500' : 'bg-red-500'}`}
-                                 style={{ width: `${Math.min(100,(r.eveningDone/2)*100)}%` }} />
-                          </div>
-                        </div>
+                        <BucketCell done={r.eveningDone} req={2} required={bucketsRequired(r.createdBucket).evening} />
                       )}
                     </td>
                     <td className="px-4 py-3">
