@@ -214,6 +214,14 @@ function AgentCallList({
 function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Score[]; onClose: () => void }) {
   const contactScores = scores.filter(s => s.contact_id === attempt.contactId)
 
+  const bucketLabel: Record<string, string> = {
+    morning: 'Morning (8–11am)',
+    afternoon: 'Afternoon (11am–4pm)',
+    evening: 'Evening (4–8pm)',
+    'off-hours': 'Off-Hours',
+    unknown: 'Unknown',
+  }
+
   return (
     <>
       <div className="fixed inset-0 bg-black/60 z-40" onClick={onClose} />
@@ -221,7 +229,7 @@ function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Sco
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
           <div>
             <h2 className="font-semibold text-white text-lg capitalize">{attempt.name}</h2>
-            <p className="text-xs text-gray-500">{attempt.date} · KPI {attempt.amMet && attempt.pmMet ? '✅ Met' : '❌ Missed'}</p>
+            <p className="text-xs text-gray-500">{attempt.date} · Lead entered during {bucketLabel[attempt.createdBucket] || attempt.createdBucket}</p>
           </div>
           <div className="flex items-center gap-3">
             {attempt.contactId && (
@@ -230,26 +238,81 @@ function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Sco
                 target="_blank" rel="noopener noreferrer"
                 className="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors"
               >
-                Go to Contact ↗
+                Open in GHL ↗
               </a>
             )}
             <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
           </div>
         </div>
+
+        {/* Status summary banner */}
+        {attempt.status === 'ANSWERED' && (
+          <div className="px-5 py-3 bg-blue-950/60 border-b border-blue-800 flex items-center gap-3">
+            <span className="text-2xl">📞</span>
+            <div>
+              <p className="text-blue-300 font-semibold text-sm">Client Answered</p>
+              <p className="text-blue-400 text-xs mt-0.5">
+                {attempt.kpiReason || 'Lead picked up during follow-up sequence — no further attempts needed.'}
+              </p>
+            </div>
+          </div>
+        )}
+        {attempt.status === 'COMPLETE' && (
+          <div className="px-5 py-3 bg-green-950/60 border-b border-green-800 flex items-center gap-3">
+            <span className="text-2xl">✅</span>
+            <div>
+              <p className="text-green-300 font-semibold text-sm">All Attempts Completed</p>
+              <p className="text-green-400 text-xs mt-0.5">
+                {attempt.kpiReason || 'All 6 required attempts (2 morning + 2 afternoon + 2 evening) were made.'}
+              </p>
+            </div>
+          </div>
+        )}
+        {attempt.status === 'FAIL' && (
+          <div className="px-5 py-3 bg-red-950/60 border-b border-red-800 flex items-center gap-3">
+            <span className="text-2xl">❌</span>
+            <div>
+              <p className="text-red-300 font-semibold text-sm">KPI Not Met</p>
+              <p className="text-red-400 text-xs mt-0.5">
+                {attempt.kpiReason || 'Tracking window expired without completing all required attempts.'}
+              </p>
+            </div>
+          </div>
+        )}
+        {attempt.status === 'IN_PROGRESS' && (
+          <div className="px-5 py-3 bg-yellow-950/60 border-b border-yellow-800 flex items-center gap-3">
+            <span className="text-2xl">⏳</span>
+            <div>
+              <p className="text-yellow-300 font-semibold text-sm">In Progress</p>
+              <p className="text-yellow-400 text-xs mt-0.5">
+                {attempt.kpiReason || 'Follow-up sequence still active.'}
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="px-5 py-3 border-b border-gray-800 flex gap-6 text-sm">
           <div>
-            <p className="text-gray-500 text-xs">AM Calls</p>
-            {attempt.contacted
-              ? <p className="text-green-400 font-medium">✅ Contacted</p>
-              : <p className={attempt.amMet ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.amDone}/{attempt.amReq}</p>
+            <p className="text-gray-500 text-xs">🌅 Morning</p>
+            {attempt.status === 'ANSWERED'
+              ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
+              : <p className={attempt.morningDone >= 2 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.morningDone}/2</p>
             }
           </div>
           <div>
-            <p className="text-gray-500 text-xs">PM Calls</p>
-            {attempt.contacted
-              ? <p className="text-green-400 font-medium">✅ Contacted</p>
-              : <p className={attempt.pmMet ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.pmDone}/{attempt.pmReq}</p>
+            <p className="text-gray-500 text-xs">☀️ Afternoon</p>
+            {attempt.status === 'ANSWERED'
+              ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
+              : <p className={attempt.afternoonDone >= 2 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.afternoonDone}/2</p>
             }
+          </div>
+          <div>
+            <p className="text-gray-500 text-xs">🌆 Evening</p>
+            {attempt.status === 'ANSWERED'
+              ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
+              : <p className={attempt.eveningDone >= 2 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.eveningDone}/2</p>
+            }
+          </div>
           </div>
           <div>
             <p className="text-gray-500 text-xs">QA Calls scored</p>
