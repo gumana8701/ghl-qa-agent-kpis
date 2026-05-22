@@ -34,12 +34,12 @@ function KpiPill({ status }: { status: string }) {
 }
 
 const CRITERIA: { key: string; label: string; max: number }[] = [
-  { key: 'followed_qualification_script',     label: 'Followed Script',    max: 10 },
-  { key: 'asked_all_qualification_questions', label: 'Asked All Questions', max: 10 },
-  { key: 'call_flow_control',                 label: 'Call Flow Control',   max: 10 },
-  { key: 'objection_handling',                label: 'Objection Handling',  max: 10 },
-  { key: 'proper_dq_qualification_decision',  label: 'DQ Decision',         max: 10 },
-  { key: 'booking_attempt',                   label: 'Booking Attempt',     max: 10 },
+  { key: 'followed_qualification_script',     label: 'Followed Script',    max: 100 },
+  { key: 'asked_all_qualification_questions', label: 'Asked All Questions', max: 100 },
+  { key: 'call_flow_control',                 label: 'Call Flow Control',   max: 100 },
+  { key: 'objection_handling',                label: 'Objection Handling',  max: 100 },
+  { key: 'proper_dq_qualification_decision',  label: 'DQ Decision',         max: 100 },
+  { key: 'booking_attempt',                   label: 'Booking Attempt',     max: 100 },
 ]
 
 const GHL_LOC = 'OEvyZgDZMvPWYEYrBTxR'
@@ -118,7 +118,7 @@ function ScorecardCard({ r, onBack }: { r: Score; onBack?: () => void }) {
             <div key={c.key}>
               <div className="flex justify-between text-xs text-gray-400 mb-1">
                 <span>{c.label}</span>
-                <span className={scoreColor(val * 10)}>{val}/{c.max}</span>
+                <span className={scoreColor(val)}>{val}/{c.max}</span>
               </div>
               <Bar value={val} max={c.max} />
             </div>
