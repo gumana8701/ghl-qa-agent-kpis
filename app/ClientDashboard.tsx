@@ -46,39 +46,92 @@ const CRITERIA: { key: string; label: string; max: number }[] = [
 
 const GHL_LOC = 'OEvyZgDZMvPWYEYrBTxR'
 
-function BucketCell({ done, req, required = true }: { done: number; req: number; required?: boolean }) {
-  if (!required) return <span className="text-gray-600 text-xs">—</span>
-  const met = done >= req
-  return (
-    <div className="flex items-center gap-2">
-      <span className={met ? 'text-green-400' : 'text-red-400'}>{done}/{req}</span>
-      <div className="w-14 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${met ? 'bg-green-500' : 'bg-red-500'}`}
-             style={{ width: `${Math.min(100,(done/req)*100)}%` }} />
-      </div>
-    </div>
-  )
+
+// ── 3-day follow-up helpers (all times shown in Central Time) ────────────────
+const DAY_REQ = 6 // required human attempts per day (Day 1/2/3 after lead entry)
+
+function ctFmt(iso: string, opts: Intl.DateTimeFormatOptions): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleString('en-US', { timeZone: 'America/Chicago', ...opts })
+}
+function ctDateStr(iso: string): string {
+  return ctFmt(iso, { year: 'numeric', month: '2-digit', day: '2-digit' })
+}
+function ctTimeStr(iso: string): string {
+  return ctFmt(iso, { hour: 'numeric', minute: '2-digit', hour12: true })
+}
+// "45m ago" / "3h ago" / "2d ago" — relative to now
+function sinceLabel(iso: string): string {
+  if (!iso) return ''
+  const ms = Date.now() - new Date(iso).getTime()
+  if (isNaN(ms) || ms < 0) return ''
+  const min = Math.floor(ms / 60000)
+  if (min < 60) return `${min}m ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  const d = Math.floor(hr / 24)
+  return `${d}d ago`
+}
+// Which follow-up day (1..3) a given attempt falls on, relative to entry (CT calendar days)
+function ctDayKey(iso: string): string {
+  return ctFmt(iso, { year: 'numeric', month: '2-digit', day: '2-digit' })
+}
+function followupDayIndex(attemptIso: string, entryIso: string): number {
+  const entry = new Date(entryIso); const t = new Date(attemptIso)
+  if (isNaN(entry.getTime()) || isNaN(t.getTime())) return 0
+  const dayMs = 24 * 3600 * 1000
+  for (let i = 0; i < 3; i++) {
+    if (ctDayKey(new Date(entry.getTime() + i * dayMs).toISOString()) === ctDayKey(attemptIso)) return i
+  }
+  return t > entry ? 2 : 0
+}
+// Label for follow-up day i (0-based) relative to entry: "Aug 6" style + Today/Tomorrow
+function followupDayLabel(entryIso: string, i: number): string {
+  if (!entryIso) return `Day ${i + 1}`
+  const d = new Date(new Date(entryIso).getTime() + i * 24 * 3600 * 1000)
+  const todayKey = ctDayKey(new Date().toISOString())
+  const key = ctDayKey(d.toISOString())
+  const short = d.toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric' })
+  return key === todayKey ? `${short} (today)` : short
+}
+// Whether follow-up day i (0-based) is still in the future (CT)
+function dayIsFuture(entryIso: string, i: number): boolean {
+  if (!entryIso) return false
+  const d = new Date(new Date(entryIso).getTime() + i * 24 * 3600 * 1000)
+  return ctDayKey(d.toISOString()) > ctDayKey(new Date().toISOString())
 }
 
-// Determine which buckets are required based on createdBucket
-function bucketsRequired(createdBucket: string): { morning: boolean; afternoon: boolean; evening: boolean } {
-  switch (createdBucket) {
-    case 'morning':   return { morning: true,  afternoon: true,  evening: true  }
-    case 'afternoon': return { morning: false, afternoon: true,  evening: true  }
-    case 'evening':   return { morning: false, afternoon: false, evening: true  }
-    case 'off-hours': return { morning: true,  afternoon: true,  evening: true  }
-    default:          return { morning: true,  afternoon: true,  evening: true  }
+// One "Day N" cell: dots for clustered attempts + n/6
+function DayCell({ done, future, times }: { done: number; future: boolean; times: string[] }) {
+  if (future) return <span className="text-gray-600 text-xs">upcoming</span>
+  const met = done >= DAY_REQ
+  const dots = []
+  for (let i = 0; i < DAY_REQ; i++) {
+    dots.push(
+      <span key={i} title={times[i] ? ctTimeStr(times[i]) + ' CT' : ''}
+        className={`inline-block w-2 h-2 rounded-full ${i < done ? (met ? 'bg-green-400' : 'bg-blue-400') : 'bg-gray-700'}`} />
+    )
   }
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">{dots}</div>
+      <span className={`text-xs ${met ? 'text-green-400' : done > 0 ? 'text-blue-300' : 'text-gray-500'}`}>{done}/{DAY_REQ}</span>
+    </div>
+  )
 }
 
 // ── types ─────────────────────────────────────────────────────────────────────
 type Score = Record<string, any>
 type AttemptRow = {
   id: number; date: string; name: string; contactId: string;
-  morningDone: number; afternoonDone: number; eveningDone: number;
+  day1Done: number; day2Done: number; day3Done: number; totalDone: number;
+  attemptTimes: string[]; entryIso: string; windowEndIso: string;
   contacted: boolean; status: string; createdBucket: string; kpiReason: string;
-  completionPct: number;
+  completionPct: number; contactDurationSec: number;
   // legacy
+  morningDone: number; afternoonDone: number; eveningDone: number;
   amDone: number; amReq: number; pmDone: number; pmReq: number;
   amMet: boolean; pmMet: boolean;
 }
@@ -229,13 +282,9 @@ function AgentCallList({
 function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Score[]; onClose: () => void }) {
   const contactScores = scores.filter(s => s.contact_id === attempt.contactId)
 
-  const bucketLabel: Record<string, string> = {
-    morning: 'Morning (8–11am)',
-    afternoon: 'Afternoon (11am–4pm)',
-    evening: 'Evening (4–8pm)',
-    'off-hours': 'Off-Hours',
-    unknown: 'Unknown',
-  }
+  const attemptTimes = attempt.attemptTimes ?? []
+  const drawerDayTimes: string[][] = [[], [], []]
+  attemptTimes.forEach(t => { drawerDayTimes[followupDayIndex(t, attempt.entryIso)].push(t) })
 
   return (
     <>
@@ -244,7 +293,7 @@ function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Sco
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
           <div>
             <h2 className="font-semibold text-white text-lg capitalize">{attempt.name}</h2>
-            <p className="text-xs text-gray-500">{attempt.date} · Lead entered during {bucketLabel[attempt.createdBucket] || attempt.createdBucket}</p>
+            <p className="text-xs text-gray-500">Entered {ctFmt(attempt.entryIso, { month: 'short', day: 'numeric' })} · {ctTimeStr(attempt.entryIso)} CT ({sinceLabel(attempt.entryIso)}) · 3-day follow-up window</p>
           </div>
           <div className="flex items-center gap-3">
             {attempt.contactId && (
@@ -278,7 +327,7 @@ function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Sco
             <div>
               <p className="text-green-300 font-semibold text-sm">All Attempts Completed</p>
               <p className="text-green-400 text-xs mt-0.5">
-                {attempt.kpiReason || 'All 6 required attempts (2 morning + 2 afternoon + 2 evening) were made.'}
+                {attempt.kpiReason || 'All 18 required attempts (6 per day × 3 days) were made.'}
               </p>
             </div>
           </div>
@@ -317,40 +366,41 @@ function Drawer({ attempt, scores, onClose }: { attempt: AttemptRow; scores: Sco
           </div>
         )}
 
-        <div className="px-5 py-3 border-b border-gray-800 flex gap-6 text-sm">
-          {(() => {
-            const req = bucketsRequired(attempt.createdBucket)
-            const answered = attempt.status === 'ANSWERED'
+        {/* 3-day timeline detail */}
+        <div className="px-5 py-4 border-b border-gray-800 space-y-3">
+          {[0, 1, 2].map(i => {
+            const done = [attempt.day1Done, attempt.day2Done, attempt.day3Done][i]
+            const future = dayIsFuture(attempt.entryIso, i)
             return (
-              <>
-                <div>
-                  <p className="text-gray-500 text-xs">🌅 Morning</p>
-                  {!req.morning ? <p className="text-gray-600 text-xs">Not required</p>
-                    : answered ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
-                    : <p className={attempt.morningDone >= 3 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.morningDone}/3</p>
-                  }
+              <div key={i} className="flex items-start gap-3">
+                <div className="w-24 shrink-0">
+                  <p className="text-gray-400 text-xs font-medium">Day {i + 1}</p>
+                  <p className="text-gray-600 text-[10px]">{followupDayLabel(attempt.entryIso, i)}</p>
                 </div>
-                <div>
-                  <p className="text-gray-500 text-xs">☀️ Afternoon</p>
-                  {!req.afternoon ? <p className="text-gray-600 text-xs">Not required</p>
-                    : answered ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
-                    : <p className={attempt.afternoonDone >= 3 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.afternoonDone}/3</p>
-                  }
+                <div className="flex-1">
+                  {attempt.status === 'ANSWERED' && done === 0 && !future
+                    ? <p className="text-blue-400 text-xs">📞 Answered — no further attempts needed</p>
+                    : <>
+                        <DayCell done={done} future={future} times={drawerDayTimes[i]} />
+                        {drawerDayTimes[i].length > 0 && (
+                          <p className="text-[10px] text-gray-500 mt-1">
+                            {drawerDayTimes[i].map(t => ctTimeStr(t)).join(' · ')} CT
+                          </p>
+                        )}
+                      </>}
                 </div>
-                <div>
-                  <p className="text-gray-500 text-xs">🌆 Evening</p>
-                  {!req.evening ? <p className="text-gray-600 text-xs">Not required</p>
-                    : answered ? <p className="text-blue-400 font-medium text-xs">📞 Answered</p>
-                    : <p className={attempt.eveningDone >= 3 ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>{attempt.eveningDone}/3</p>
-                  }
-                </div>
-              </>
+              </div>
             )
-          })()}
-          </div>
-          <div>
-            <p className="text-gray-500 text-xs">QA Calls scored</p>
-            <p className="text-white font-medium">{contactScores.length}</p>
+          })}
+          <div className="pt-1 flex gap-6 text-sm border-t border-gray-800/60">
+            <div className="pt-2">
+              <p className="text-gray-500 text-xs">Total attempts</p>
+              <p className="text-white font-medium">{attempt.totalDone}/18</p>
+            </div>
+            <div className="pt-2">
+              <p className="text-gray-500 text-xs">QA Calls scored</p>
+              <p className="text-white font-medium">{contactScores.length}</p>
+            </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
@@ -677,8 +727,8 @@ export default function ClientDashboard({
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div>
             <h2 className="text-lg font-semibold text-white">
-              📞 Call Attempt KPI
-              <span className="text-sm text-gray-500 font-normal ml-2">(2 Morning + 2 Afternoon + 2 Evening)</span>
+              📞 Human Follow-Up — 3-Day Rule
+              <span className="text-sm text-gray-500 font-normal ml-2">(6 call attempts/day × 3 days from lead entry · calls &lt;45 min apart count as 1 attempt)</span>
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">Click a row to see QA scorecards for that contact</p>
           </div>
@@ -700,16 +750,20 @@ export default function ClientDashboard({
               <thead>
                 <tr className="border-b border-gray-800 text-gray-400 text-left">
                   <th className="px-4 py-3">Lead</th>
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">🌅 Morning</th>
-                  <th className="px-4 py-3">☀️ Afternoon</th>
-                  <th className="px-4 py-3">🌆 Evening</th>
-                  <th className="px-4 py-3">% Done</th>
+                  <th className="px-4 py-3">Entered</th>
+                  <th className="px-4 py-3">Day 1</th>
+                  <th className="px-4 py-3">Day 2</th>
+                  <th className="px-4 py-3">Day 3</th>
+                  <th className="px-4 py-3">Progress</th>
                   <th className="px-4 py-3">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {parsedAttempts.map(r => (
+                {parsedAttempts.map(r => {
+                  const times = r.attemptTimes ?? []
+                  const dayTimes: string[][] = [[], [], []]
+                  times.forEach(t => { dayTimes[followupDayIndex(t, r.entryIso)].push(t) })
+                  return (
                   <tr
                     key={r.id}
                     onClick={() => setSelectedAttempt(r)}
@@ -718,31 +772,28 @@ export default function ClientDashboard({
                     <td className="px-4 py-3">
                       <span className="text-white capitalize">{r.name}</span>
                       {r.contactId && <span className="ml-1 text-xs text-gray-600">↗</span>}
-                      {r.createdBucket && <span className="ml-2 text-xs text-gray-600">({r.createdBucket})</span>}
                     </td>
-                    <td className="px-4 py-3 text-gray-400">{r.date}</td>
-                    <td className="px-4 py-3">
-                      {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
-                        <BucketCell done={r.morningDone} req={3} required={bucketsRequired(r.createdBucket).morning} />
-                      )}
+                    <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
+                      <div>{ctDateStr(r.entryIso) !== '—' ? ctFmt(r.entryIso, { month: 'short', day: 'numeric' }) : r.date} · {ctTimeStr(r.entryIso)}</div>
+                      <div className="text-xs text-gray-600">{sinceLabel(r.entryIso)}</div>
                     </td>
-                    <td className="px-4 py-3">
-                      {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
-                        <BucketCell done={r.afternoonDone} req={3} required={bucketsRequired(r.createdBucket).afternoon} />
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
-                        <BucketCell done={r.eveningDone} req={3} required={bucketsRequired(r.createdBucket).evening} />
-                      )}
-                    </td>
+                    {[0, 1, 2].map(i => (
+                      <td key={i} className="px-4 py-3">
+                        {r.status === 'ANSWERED' ? <span className="text-blue-400 text-xs">📞</span> : (
+                          <div>
+                            <DayCell done={[r.day1Done, r.day2Done, r.day3Done][i]} future={dayIsFuture(r.entryIso, i)} times={dayTimes[i]} />
+                            <div className="text-[10px] text-gray-600 mt-0.5">{followupDayLabel(r.entryIso, i)}</div>
+                          </div>
+                        )}
+                      </td>
+                    ))}
                     <td className="px-4 py-3">
                       {(() => {
                         const pct = r.completionPct ?? 0
                         const color = pct >= 100 ? 'text-green-400' : pct >= 60 ? 'text-yellow-400' : 'text-red-400'
                         return (
                           <div className="flex items-center gap-2">
-                            <span className={`font-medium ${color}`}>{pct}%</span>
+                            <span className={`font-medium ${color} whitespace-nowrap`}>{r.status === 'ANSWERED' ? '📞' : `${r.totalDone}/18`}</span>
                             <div className="w-12 h-1.5 bg-gray-700 rounded-full overflow-hidden">
                               <div className={`h-full rounded-full ${pct >= 100 ? 'bg-green-500' : pct >= 60 ? 'bg-yellow-500' : 'bg-red-500'}`}
                                    style={{ width: `${Math.min(100, pct)}%` }} />
@@ -755,7 +806,8 @@ export default function ClientDashboard({
                       <KpiPill status={r.status} />
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

@@ -97,33 +97,39 @@ export default async function Dashboard({
   // Parse attempt rows — new 3-bucket schema
   const parsedAttempts = kpiRows.map(a => {
     const contacted      = a.contacted === true
-    const morningDone    = a.morning_calls   ?? a.am_calls ?? 0
-    const afternoonDone  = a.afternoon_calls ?? a.pm_calls ?? 0
-    const eveningDone    = a.evening_calls   ?? 0
-    const status         = a.status ?? (a.kpi_met ? 'COMPLETE' : 'FAIL')
-    const createdBucket  = a.created_bucket ?? 'unknown'
-    const totalDone      = morningDone + afternoonDone + eveningDone
-    const completionPct  = (status === 'ANSWERED' || status === 'COMPLETE')
+    // 3-day rule: morning/afternoon/evening columns are repurposed as Day 1/2/3 attempt counts
+    const day1Done = a.morning_calls   ?? a.am_calls ?? 0
+    const day2Done = a.afternoon_calls ?? a.pm_calls ?? 0
+    const day3Done = a.evening_calls   ?? 0
+    const status   = a.status ?? (a.kpi_met ? 'COMPLETE' : 'FAIL')
+    const rawReason: string = a.kpi_reason ?? ''
+    const attIdx = rawReason.indexOf('~ATT:')
+    const kpiReason    = attIdx >= 0 ? rawReason.slice(0, attIdx) : rawReason
+    const attemptTimes = attIdx >= 0 ? rawReason.slice(attIdx + 5).split(',').filter(Boolean) : []
+    const totalDone    = day1Done + day2Done + day3Done
+    const completionPct = (status === 'ANSWERED' || status === 'COMPLETE')
       ? 100
-      : Math.min(100, Math.round((totalDone / 9) * 100))
+      : Math.min(100, Math.round((totalDone / 18) * 100))
     return {
       id:            a.id,
       date:          a.kpi_date ?? '',
       name:          a.contact_name || '—',
       contactId:     a.contact_id || '',
-      morningDone,
-      afternoonDone,
-      eveningDone,
+      day1Done, day2Done, day3Done, totalDone,
+      attemptTimes,
+      entryIso:      a.window_start ?? '',
+      windowEndIso:  a.window_end ?? '',
       contacted,
       status,
-      createdBucket,
+      createdBucket: a.created_bucket ?? '3day',
       completionPct,
-      kpiReason:     a.kpi_reason ?? '',
+      kpiReason,
+      contactDurationSec: a.contact_duration_sec ?? 0,
       // legacy compat
-      amDone: morningDone,    amReq: 2,
-      pmDone: afternoonDone,  pmReq: 2,
-      amMet: status === 'ANSWERED' || status === 'COMPLETE' || morningDone >= 3,
-      pmMet: status === 'ANSWERED' || status === 'COMPLETE' || afternoonDone >= 3,
+      morningDone: day1Done, afternoonDone: day2Done, eveningDone: day3Done,
+      amDone: day1Done, amReq: 6, pmDone: day2Done, pmReq: 6,
+      amMet: status === 'ANSWERED' || status === 'COMPLETE' || day1Done >= 6,
+      pmMet: status === 'ANSWERED' || status === 'COMPLETE' || day2Done >= 6,
     }
   })
 
